@@ -1,0 +1,22 @@
+{
+    "paths": {
+        "char": "C:/Users/amoreno/Downloads/chat.png",
+        "eyes_open": "C:/Users/amoreno/Downloads/whatsapp_889154.png",
+        "eyes_closed": "C:/Users/amoreno/Downloads/logo_un.png",
+        "mouth_open": "C:/Users/amoreno/Downloads/tools.png"
+    },
+    "offsets": {
+        "char": [
+            -21,
+            -20
+        ],
+        "eyes": [
+            -314,
+            0
+        ],
+        "mouth": [
+            390,
+            0
+        ]
+    }
+}
