@@ -12,6 +12,14 @@ import json
 import os
 import math
 
+def resource_path(relative_path):
+    """Obtém o caminho absoluto para o recurso, funciona para dev e para o executável do PyInstaller."""
+    try:
+        base_path = sys._MEIPASS
+    except Exception:
+        base_path = os.path.abspath(".")
+    return os.path.join(base_path, relative_path)
+
 # --- Configurações Iniciais ---
 SCREEN_WIDTH = 1280
 SCREEN_HEIGHT = 720
@@ -36,7 +44,9 @@ def load_config():
         "borderless_window": False,
         "animations_enabled": True,
         "fps_limit": 60,
-        "wardrobe": []
+        "wardrobe": [],
+        "char_scale": 1.0,
+        "hard_edges": False
     }
     if os.path.exists(CONFIG_FILE):
         try:
@@ -53,6 +63,8 @@ def load_config():
                 config.setdefault('animations_enabled', defaults['animations_enabled'])
                 config.setdefault('fps_limit', defaults['fps_limit'])
                 config.setdefault('wardrobe', defaults['wardrobe'])
+                config.setdefault('char_scale', defaults['char_scale'])
+                config.setdefault('hard_edges', defaults['hard_edges'])
                 # Garante que as sub-chaves existam
                 for part in defaults['offsets']:
                     config['offsets'].setdefault(part, defaults['offsets'][part])
@@ -160,6 +172,14 @@ def check_global_hotkeys():
         return (ctrl_pressed and b_pressed), (ctrl_pressed and m_pressed), (ctrl_pressed and p_pressed)
     return False, False, False
 
+def get_default_layer(category):
+    """Retorna a camada padrão baseada na categoria do item."""
+    if category in ["calças", "camisas", "casacos"]:
+        return 'trás'
+    elif category == "maquiagem":
+        return 'meio'
+    return 'frente'
+
 def edit_wardrobe_item_dialog(item=None):
     """Abre um formulário Tkinter para adicionar ou editar um item do guarda-roupa."""
     root = tk.Tk()
@@ -167,7 +187,7 @@ def edit_wardrobe_item_dialog(item=None):
     dialog = tk.Toplevel(root)
     dialog.title("Item do Guarda-Roupa")
     dialog.attributes('-topmost', True)
-    dialog.geometry("400x320")
+    dialog.geometry("400x380")
     
     result = None
     
@@ -176,9 +196,15 @@ def edit_wardrobe_item_dialog(item=None):
     tk.Entry(dialog, textvariable=name_var).pack()
     
     tk.Label(dialog, text="Categoria:").pack(pady=5)
-    categories = ["chapéus", "acessórios", "calças", "casacos", "camisas", "objetos_de_cena"]
+    categories = ["chapéus", "acessórios", "maquiagem", "calças", "casacos", "camisas", "objetos_de_cena"]
     cat_var = tk.StringVar(value=item['category'] if item else categories[0])
     tk.OptionMenu(dialog, cat_var, *categories).pack()
+    
+    tk.Label(dialog, text="Camada (Frente/Meio/Trás):").pack(pady=5)
+    cat_val = item.get('category') if item else categories[0]
+    default_layer = get_default_layer(cat_val)
+    layer_var = tk.StringVar(value=item.get('layer', default_layer) if item else default_layer)
+    tk.OptionMenu(dialog, layer_var, "frente", "meio", "trás").pack()
     
     tk.Label(dialog, text="Imagem (PNG):").pack(pady=5)
     path_var = tk.StringVar(value=item['path'] if item else "")
@@ -197,6 +223,7 @@ def edit_wardrobe_item_dialog(item=None):
         result = {
             'name': name_var.get(),
             'category': cat_var.get(),
+            'layer': layer_var.get(),
             'path': path_var.get(),
             'offset': item.get('offset', [0, 0]) if item else [0, 0],
             'scale': item.get('scale', 1.0) if item else 1.0,
@@ -210,20 +237,106 @@ def edit_wardrobe_item_dialog(item=None):
     root.destroy()
     return result
 
+def remove_soft_edges(img):
+    """Transforma bordas semi-transparentes em sólidas para evitar contornos feios no ColorKey."""
+    if img.get_flags() & pygame.SRCALPHA:
+        alpha_array = pygame.surfarray.pixels_alpha(img)
+        alpha_array[alpha_array < 127] = 0
+        alpha_array[alpha_array >= 127] = 255
+        del alpha_array # Libera a superfície
+    return img
+
 def load_wardrobe_images(config, dest_dict):
     """Carrega na memória as imagens ativas do guarda-roupa."""
     for item in config.get('wardrobe', []):
         if item['path'] and os.path.exists(item['path']):
             try:
-                dest_dict[item['id']] = pygame.image.load(item['path']).convert_alpha()
+                img = pygame.image.load(item['path']).convert_alpha()
+                dest_dict[item['id']] = img
             except Exception as e:
                 print(f"Erro imagem guarda-roupa: {e}")
+
+def load_character_images_scaled(paths, max_w, max_h, manual_scale=1.0):
+    """Carrega e ajusta a escala das imagens baseadas no tamanho da tela, evitando imagens gigantes."""
+    images = {}
+    char_path = paths.get("char")
+    
+    if not char_path or not os.path.exists(char_path):
+        raise Exception("Imagem base (char) não encontrada.")
+        
+    char_img = pygame.image.load(char_path).convert_alpha()
+    orig_w, orig_h = char_img.get_size()
+    
+    scale = 1.0
+    # Calcula a escala se a imagem for maior que os limites
+    if orig_w > max_w or orig_h > max_h:
+        scale = min(max_w / orig_w, max_h / orig_h)
+        
+    final_scale = scale * manual_scale
+        
+    if final_scale != 1.0:
+        char_img = pygame.transform.smoothscale(char_img, (max(1, int(orig_w * final_scale)), max(1, int(orig_h * final_scale))))
+        
+    images["char"] = char_img
+    
+    # Carrega as outras partes do rosto e aplica a MESMA escala
+    for key in ["eyes_open", "eyes_closed", "mouth_open"]:
+        path = paths.get(key)
+        if path and os.path.exists(path):
+            img = pygame.image.load(path).convert_alpha()
+            if final_scale != 1.0:
+                w, h = img.get_size()
+                img = pygame.transform.smoothscale(img, (max(1, int(w * final_scale)), max(1, int(h * final_scale))))
+            images[key] = img
+        else:
+            images[key] = None
+            
+    return images
+
+def get_wardrobe_layout(config, wardrobe_scroll, collapsed_cats):
+    """Calcula o layout em acordeão das categorias do guarda-roupa."""
+    categories = ["chapéus", "acessórios", "maquiagem", "calças", "casacos", "camisas", "objetos_de_cena"]
+    layout = []
+    
+    draw_y = 80 - wardrobe_scroll
+    for cat in categories:
+        cat_items = [(i, item) for i, item in enumerate(config.get('wardrobe', [])) if item.get('category') == cat]
+        
+        layout.append({
+            'type': 'header',
+            'cat': cat,
+            'rect': pygame.Rect(20, draw_y, 420, 40),
+            'count': len(cat_items)
+        })
+        draw_y += 45
+        
+        if cat not in collapsed_cats:
+            for idx_in_cat, (i, item) in enumerate(cat_items):
+                layout.append({
+                    'type': 'item',
+                    'cat': cat,
+                    'index': i,
+                    'idx_in_cat': idx_in_cat,
+                    'total_in_cat': len(cat_items),
+                    'item': item,
+                    'y': draw_y
+                })
+                draw_y += 50
+    return layout
 
 def main():
     """Função principal que executa o loop do jogo."""
     global last_blink_time, next_blink_interval, is_blinking, SOUND_THRESHOLD
 
     pygame.init()
+
+    # --- Configuração do Ícone da Janela ---
+    try:
+        icon_path = resource_path('icon.ico')
+        if os.path.exists(icon_path):
+            pygame.display.set_icon(pygame.image.load(icon_path))
+    except Exception as e:
+        print(f"Erro ao carregar o ícone: {e}")
 
     # --- Configuração da Janela ---
     screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
@@ -256,6 +369,9 @@ def main():
     # Variáveis do modo de posicionamento
     editing_part_index = 0
     parts_list = ['char', 'eyes', 'mouth']
+    
+    # Superfície para o Contorno Sólido
+    composition_surface = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
 
     # Botões da interface (posição x, posição y, largura, altura)
     btn_char = pygame.Rect(50, 50, 350, 40)
@@ -277,6 +393,7 @@ def main():
     btn_wardrobe = pygame.Rect(700, 560, 250, 50)
     btn_animations = pygame.Rect(420, 620, 250, 50)
     btn_fps = pygame.Rect(700, 620, 250, 50)
+    btn_hard_edges = pygame.Rect(50, 620, 350, 50)
     btn_positioning_save = pygame.Rect(SCREEN_WIDTH - 270, SCREEN_HEIGHT - 70, 250, 50)
     
     # Calcula o tamanho dos botões dinamicamente baseado no texto (+30px de margem horizontal)
@@ -284,7 +401,7 @@ def main():
     btn_add_wardrobe = pygame.Rect(20, 20, add_w + 30, max(40, add_h + 20))
     back_w, back_h = font.size("Voltar ao Menu")
     btn_wardrobe_back = pygame.Rect(btn_add_wardrobe.right + 20, 20, back_w + 30, max(40, back_h + 20))
-    wardrobe_panel_width = max(420, btn_wardrobe_back.right + 20)
+    wardrobe_panel_width = max(480, btn_wardrobe_back.right + 20)
 
     wardrobe_images = {}
     load_wardrobe_images(config, wardrobe_images)
@@ -326,9 +443,20 @@ def main():
         """Função unificada para desenhar o personagem e suas roupas respeitando as camadas."""
         anim_char_center = (base_char_center[0] + anim_offset[0], base_char_center[1] + anim_offset[1])
         
-        def draw_cat(cat):
+        is_hard_edges = config.get('hard_edges', False)
+        
+        if is_hard_edges:
+            target_surf = composition_surface
+            target_surf.fill((0, 0, 0, 0))
+        else:
+            target_surf = screen
+            
+        def draw_layer_items(layer_target):
             for w_item in config.get('wardrobe', []):
-                if w_item.get('active') and w_item.get('category') == cat and w_item['id'] in wardrobe_images:
+                cat = w_item.get('category')
+                item_layer = w_item.get('layer', get_default_layer(cat))
+                
+                if w_item.get('active') and item_layer == layer_target and w_item['id'] in wardrobe_images:
                     img = wardrobe_images[w_item['id']]
                     scale = w_item.get('scale', 1.0)
                     if scale != 1.0:
@@ -337,34 +465,38 @@ def main():
                     # Objetos de cena são estáticos, ignoram a animação
                     center_to_use = base_char_center if cat == "objetos_de_cena" else anim_char_center
                     item_c = (center_to_use[0] + w_item['offset'][0], center_to_use[1] + w_item['offset'][1])
-                    screen.blit(img, img.get_rect(center=item_c))
+                    target_surf.blit(img, img.get_rect(center=item_c))
                     
         # Camadas Fundo -> Frente
-        draw_cat("calças")
-        draw_cat("camisas")
-        draw_cat("casacos")
+        draw_layer_items('trás')
         
         if "char" in images and images["char"]:
-            screen.blit(images['char'], images['char'].get_rect(center=anim_char_center))
+            target_surf.blit(images['char'], images['char'].get_rect(center=anim_char_center))
+            
+        draw_layer_items('meio')
             
         eyes_c = (anim_char_center[0] + offsets['eyes'][0], anim_char_center[1] + offsets['eyes'][1])
         if (is_blinking or force_e) and "eyes_closed" in images and images["eyes_closed"]:
-            screen.blit(images["eyes_closed"], images["eyes_closed"].get_rect(center=eyes_c))
+            target_surf.blit(images["eyes_closed"], images["eyes_closed"].get_rect(center=eyes_c))
         elif not (is_blinking or force_e) and "eyes_open" in images and images["eyes_open"]:
-            screen.blit(images["eyes_open"], images["eyes_open"].get_rect(center=eyes_c))
+            target_surf.blit(images["eyes_open"], images["eyes_open"].get_rect(center=eyes_c))
             
         mouth_c = (anim_char_center[0] + offsets['mouth'][0], anim_char_center[1] + offsets['mouth'][1])
         if (is_speaking or force_m) and "mouth_open" in images and images["mouth_open"]:
-            screen.blit(images["mouth_open"], images["mouth_open"].get_rect(center=mouth_c))
+            target_surf.blit(images["mouth_open"], images["mouth_open"].get_rect(center=mouth_c))
             
-        draw_cat("acessórios")
-        draw_cat("chapéus")
-        draw_cat("objetos_de_cena")
+        draw_layer_items('frente')
+        
+        if is_hard_edges:
+            target_surf = remove_soft_edges(target_surf)
+            screen.blit(target_surf, (0, 0))
 
     dragging_part = None
     wardrobe_dragging_item_id = None
     wardrobe_selected_item_id = None
     wardrobe_scroll = 0
+    wardrobe_collapsed_cats = set()
+    dragging_wardrobe_slider = False
     
     last_cycle_profile_pressed = False
     current_profile_index = -1
@@ -458,13 +590,15 @@ def main():
                     elif btn_start.collidepoint(pos) and all(paths.values()):
                         # Tenta carregar as imagens assim que iniciar
                         try:
-                            images["char"] = pygame.image.load(paths["char"]).convert_alpha()
-                            images["eyes_open"] = pygame.image.load(paths["eyes_open"]).convert_alpha()
-                            images["eyes_closed"] = pygame.image.load(paths["eyes_closed"]).convert_alpha()
-                            images["mouth_open"] = pygame.image.load(paths["mouth_open"]).convert_alpha()
+                            images.update(load_character_images_scaled(paths, SCREEN_WIDTH * 0.9, SCREEN_HEIGHT * 0.9, config.get('char_scale', 1.0)))
                             
-                            # Muda para a tela de posicionamento
-                            current_state = "POSITIONING"
+                            # Muda para a tela principal (RUNNING)
+                            current_state = "RUNNING"
+                            if config.get('borderless_window', False):
+                                screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.NOFRAME)
+                            else:
+                                screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
+                            set_window_transparency(config['bg_color'], config.get('transparent_window', False))
                             
                         except Exception as e:
                             print(f"Erro ao carregar imagem: {e}")
@@ -476,21 +610,18 @@ def main():
                                     paths[key] = None
                             save_config(config)
                     elif btn_positioning.collidepoint(pos) and all(paths.values()):
-                            try:
-                                images["char"] = pygame.image.load(paths["char"]).convert_alpha()
-                                images["eyes_open"] = pygame.image.load(paths["eyes_open"]).convert_alpha()
-                                images["eyes_closed"] = pygame.image.load(paths["eyes_closed"]).convert_alpha()
-                                images["mouth_open"] = pygame.image.load(paths["mouth_open"]).convert_alpha()
-                                
-                                current_state = "POSITIONING"
-                            except Exception as e:
-                                print(f"Erro ao carregar imagem: {e}")
-                                notification_text = "Erro: Arquivo de imagem inválido ou não encontrado!"
-                                notification_time = time.time()
-                                for key in paths:
-                                    if paths[key] and not os.path.exists(paths[key]):
-                                        paths[key] = None
-                                save_config(config)
+                        try:
+                            images.update(load_character_images_scaled(paths, SCREEN_WIDTH * 0.9, SCREEN_HEIGHT * 0.9, config.get('char_scale', 1.0)))
+
+                            current_state = "POSITIONING"
+                        except Exception as e:
+                            print(f"Erro ao carregar imagem: {e}")
+                            notification_text = "Erro: Arquivo de imagem inválido ou não encontrado!"
+                            notification_time = time.time()
+                            for key in paths:
+                                if paths[key] and not os.path.exists(paths[key]):
+                                    paths[key] = None
+                            save_config(config)
                     elif btn_bg_color.collidepoint(pos):
                         root = tk.Tk()
                         root.withdraw()
@@ -511,6 +642,9 @@ def main():
                         save_config(config)
                     elif btn_fps.collidepoint(pos):
                         config['fps_limit'] = 30 if config.get('fps_limit', 60) == 60 else 60
+                        save_config(config)
+                    elif btn_hard_edges.collidepoint(pos):
+                        config['hard_edges'] = not config.get('hard_edges', False)
                         save_config(config)
                     elif btn_wardrobe.collidepoint(pos):
                         current_state = "WARDROBE"
@@ -582,6 +716,18 @@ def main():
                         elif c_rect_hit and c_rect_hit.collidepoint(event.pos): dragging_part = 'char'
                         
                 elif current_state == "WARDROBE":
+                    if wardrobe_selected_item_id:
+                        slider_rect_w = pygame.Rect(wardrobe_panel_width + 30, 90, 200, 15)
+                        if slider_rect_w.inflate(0, 20).collidepoint(event.pos):
+                            dragging_wardrobe_slider = True
+                            rel_x = max(0, min(event.pos[0] - slider_rect_w.x, slider_rect_w.width))
+                            new_scale = 0.1 + (rel_x / slider_rect_w.width) * 4.9
+                            for item in config['wardrobe']:
+                                if item['id'] == wardrobe_selected_item_id:
+                                    item['scale'] = round(new_scale, 2)
+                                    break
+                            continue
+                            
                     if btn_add_wardrobe.collidepoint(event.pos):
                         new_item = edit_wardrobe_item_dialog()
                         if new_item:
@@ -591,50 +737,98 @@ def main():
                     elif btn_wardrobe_back.collidepoint(event.pos):
                         current_state = "MENU"
                     else:
-                        # Verifica cliques na lista (Switch, Edit, Delete)
-                        y_offset = 80
+                        layout = get_wardrobe_layout(config, wardrobe_scroll, wardrobe_collapsed_cats)
                         clicked_list = False
-                        for i, item in enumerate(config.get('wardrobe', [])):
-                            item_y = y_offset + i * 50 - wardrobe_scroll
-                            if item_y < 70 or item_y > SCREEN_HEIGHT: continue
-                            if pygame.Rect(20, item_y, 40, 40).collidepoint(event.pos):
-                                item['active'] = not item.get('active', True)
-                                save_config(config)
-                                clicked_list = True
-                                break
-                            elif pygame.Rect(300, item_y, 40, 40).collidepoint(event.pos):
-                                edited = edit_wardrobe_item_dialog(item)
-                                if edited:
-                                    config['wardrobe'][i] = edited
+                        for node in layout:
+                            if node['type'] == 'header':
+                                if node['rect'].collidepoint(event.pos) and 70 <= node['rect'].y <= SCREEN_HEIGHT:
+                                    if node['cat'] in wardrobe_collapsed_cats:
+                                        wardrobe_collapsed_cats.remove(node['cat'])
+                                    else:
+                                        wardrobe_collapsed_cats.add(node['cat'])
+                                    clicked_list = True
+                                    break
+                            elif node['type'] == 'item':
+                                item_y = node['y']
+                                if item_y < 70 or item_y > SCREEN_HEIGHT: continue
+                                i = node['index']
+                                item = node['item']
+                                
+                                if pygame.Rect(20, item_y, 40, 40).collidepoint(event.pos):
+                                    item['active'] = not item.get('active', True)
                                     save_config(config)
-                                    load_wardrobe_images(config, wardrobe_images)
-                                clicked_list = True
-                                break
-                            elif pygame.Rect(350, item_y, 40, 40).collidepoint(event.pos):
-                                del config['wardrobe'][i]
-                                save_config(config)
-                                clicked_list = True
-                                break
-                            elif pygame.Rect(200, item_y, 40, 40).collidepoint(event.pos) and i > 0:
-                                config['wardrobe'][i], config['wardrobe'][i-1] = config['wardrobe'][i-1], config['wardrobe'][i]
-                                save_config(config)
-                                clicked_list = True
-                                break
-                            elif pygame.Rect(250, item_y, 40, 40).collidepoint(event.pos) and i < len(config['wardrobe']) - 1:
-                                config['wardrobe'][i], config['wardrobe'][i+1] = config['wardrobe'][i+1], config['wardrobe'][i]
-                                save_config(config)
-                                clicked_list = True
-                                break
+                                    clicked_list = True
+                                    break
+                                elif pygame.Rect(200, item_y, 40, 40).collidepoint(event.pos):
+                                    cat = item.get('category')
+                                    current_layer = item.get('layer', get_default_layer(cat))
+                                    if current_layer == 'frente':
+                                        item['layer'] = 'meio'
+                                    elif current_layer == 'meio':
+                                        item['layer'] = 'trás'
+                                    else:
+                                        item['layer'] = 'frente'
+                                    save_config(config)
+                                    clicked_list = True
+                                    break
+                                elif pygame.Rect(350, item_y, 40, 40).collidepoint(event.pos):
+                                    edited = edit_wardrobe_item_dialog(item)
+                                    if edited:
+                                        config['wardrobe'][i] = edited
+                                        save_config(config)
+                                        load_wardrobe_images(config, wardrobe_images)
+                                    clicked_list = True
+                                    break
+                                elif pygame.Rect(400, item_y, 40, 40).collidepoint(event.pos):
+                                    del config['wardrobe'][i]
+                                    save_config(config)
+                                    clicked_list = True
+                                    break
+                                elif pygame.Rect(250, item_y, 40, 40).collidepoint(event.pos) and node['idx_in_cat'] > 0:
+                                    for prev_i in range(i - 1, -1, -1):
+                                        if config['wardrobe'][prev_i]['category'] == node['cat']:
+                                            config['wardrobe'][i], config['wardrobe'][prev_i] = config['wardrobe'][prev_i], config['wardrobe'][i]
+                                            break
+                                    save_config(config)
+                                    clicked_list = True
+                                    break
+                                elif pygame.Rect(300, item_y, 40, 40).collidepoint(event.pos) and node['idx_in_cat'] < node['total_in_cat'] - 1:
+                                    for next_i in range(i + 1, len(config['wardrobe'])):
+                                        if config['wardrobe'][next_i]['category'] == node['cat']:
+                                            config['wardrobe'][i], config['wardrobe'][next_i] = config['wardrobe'][next_i], config['wardrobe'][i]
+                                            break
+                                    save_config(config)
+                                    clicked_list = True
+                                    break
                                 
                         # Se não clicou na lista, tenta arrastar os itens da visualização do personagem
                         if not clicked_list:
                             preview_center_x = wardrobe_panel_width + (SCREEN_WIDTH - wardrobe_panel_width) // 2
                             char_center = (preview_center_x + config['offsets']['char'][0], SCREEN_HEIGHT // 2 + config['offsets']['char'][1])
-                            reverse_cats = ["objetos_de_cena", "chapéus", "acessórios", "casacos", "camisas", "calças"]
-                            for cat in reverse_cats:
+                            
+                            click_order = []
+                            # Adiciona os itens da frente na ordem inversa (do mais no topo para o fundo da camada)
+                            for w_item in reversed(config.get('wardrobe', [])):
+                                cat = w_item.get('category')
+                                current_layer = w_item.get('layer', get_default_layer(cat))
+                                if current_layer == 'frente':
+                                    click_order.append(w_item)
+                            # Depois adiciona os itens do meio na ordem inversa
+                            for w_item in reversed(config.get('wardrobe', [])):
+                                cat = w_item.get('category')
+                                current_layer = w_item.get('layer', get_default_layer(cat))
+                                if current_layer == 'meio':
+                                    click_order.append(w_item)
+                            # Depois adiciona os itens de trás na ordem inversa
+                            for w_item in reversed(config.get('wardrobe', [])):
+                                cat = w_item.get('category')
+                                current_layer = w_item.get('layer', get_default_layer(cat))
+                                if current_layer == 'trás':
+                                    click_order.append(w_item)
+
+                            for item in click_order:
                                 if wardrobe_dragging_item_id: break
-                                cat_items = [it for it in config['wardrobe'] if it['category'] == cat and it['active'] and it['id'] in wardrobe_images]
-                                for item in reversed(cat_items):
+                                if item.get('active') and item['id'] in wardrobe_images:
                                     img_w, img_h = wardrobe_images[item['id']].get_size()
                                     scale = item.get('scale', 1.0)
                                     item_rect = pygame.Rect(0, 0, max(1, int(img_w * scale)), max(1, int(img_h * scale)))
@@ -680,33 +874,68 @@ def main():
                     config['sound_threshold'] = SOUND_THRESHOLD
                     save_config(config)
                 
+                if dragging_wardrobe_slider:
+                    dragging_wardrobe_slider = False
+                    save_config(config)
+                
                 # Salva o config ao soltar uma peça de roupa no lugar
                 if wardrobe_dragging_item_id:
                     save_config(config)
                 dragging_part = None
                 wardrobe_dragging_item_id = None
                     
-            elif event.type == pygame.MOUSEWHEEL and current_state == "WARDROBE":
-                mouse_x, mouse_y = pygame.mouse.get_pos()
-                if mouse_x < wardrobe_panel_width:
-                    # Permite rolar a lista de itens de roupas
-                    wardrobe_scroll -= event.y * 20
-                    wardrobe_scroll = max(0, wardrobe_scroll)
-                elif wardrobe_selected_item_id:
-                    # Redimensiona o objeto de cena com o scroll do mouse
-                    for item in config['wardrobe']:
-                        if item['id'] == wardrobe_selected_item_id and item.get('category') == 'objetos_de_cena':
-                            scale = item.get('scale', 1.0)
-                            scale += event.y * 0.05
-                            item['scale'] = max(0.1, min(5.0, scale))
-                            save_config(config)
-                            break
+            elif event.type == pygame.MOUSEWHEEL:
+                if current_state == "WARDROBE":
+                    mouse_x, mouse_y = pygame.mouse.get_pos()
+                    if mouse_x < wardrobe_panel_width:
+                        wardrobe_scroll -= event.y * 20
+                        wardrobe_scroll = max(0, wardrobe_scroll)
+                    elif wardrobe_selected_item_id:
+                        for item in config['wardrobe']:
+                            if item['id'] == wardrobe_selected_item_id:
+                                scale = item.get('scale', 1.0)
+                                scale += event.y * 0.01
+                                item['scale'] = max(0.1, min(5.0, scale))
+                                save_config(config)
+                                break
+                elif current_state == "POSITIONING":
+                    # Zoom no personagem inteiro de forma centralizada!
+                    manual_scale = config.get('char_scale', 1.0)
+                    new_scale = manual_scale + (event.y * 0.01)
+                    new_scale = max(0.1, min(5.0, new_scale))
+                    
+                    if new_scale != manual_scale:
+                        config['char_scale'] = new_scale
+                        # Ajusta offsets e escalas para manter as posições relativas intactas
+                        factor = new_scale / manual_scale
+                        for part in ['char', 'eyes', 'mouth']:
+                            config['offsets'][part][0] *= factor
+                            config['offsets'][part][1] *= factor
+                        
+                        for item in config.get('wardrobe', []):
+                            item['offset'][0] *= factor
+                            item['offset'][1] *= factor
+                            item['scale'] = item.get('scale', 1.0) * factor
+                            
+                        save_config(config)
+                        try:
+                            images.update(load_character_images_scaled(paths, SCREEN_WIDTH * 0.9, SCREEN_HEIGHT * 0.9, new_scale))
+                        except Exception as e:
+                            print(f"Erro ao redimensionar personagem: {e}")
                     
             elif event.type == pygame.MOUSEMOTION:
                 if dragging_slider:
                     rel_x = max(0, min(event.pos[0] - slider_rect.x, slider_rect.width))
                     # Mapeia o movimento do slider para um valor entre 0.01 e 0.50
                     SOUND_THRESHOLD = 0.01 + (rel_x / slider_rect.width) * 0.49
+                elif dragging_wardrobe_slider and current_state == "WARDROBE" and wardrobe_selected_item_id:
+                    slider_rect_w = pygame.Rect(wardrobe_panel_width + 30, 90, 200, 15)
+                    rel_x = max(0, min(event.pos[0] - slider_rect_w.x, slider_rect_w.width))
+                    new_scale = 0.1 + (rel_x / slider_rect_w.width) * 4.9
+                    for item in config['wardrobe']:
+                        if item['id'] == wardrobe_selected_item_id:
+                            item['scale'] = round(new_scale, 2)
+                            break
                 elif current_state == "POSITIONING" and dragging_part:
                     offsets[dragging_part][0] += event.rel[0]
                     offsets[dragging_part][1] += event.rel[1]
@@ -864,6 +1093,13 @@ def main():
             fps_text = font.render(f"FPS: {current_fps}", True, (255, 255, 255))
             screen.blit(fps_text, (btn_fps.x + 20, btn_fps.y + 12))
 
+            # Desenha o botão de Contorno Sólido
+            is_hard_edges = config.get('hard_edges', False)
+            hard_edges_color = (0, 200, 0) if is_hard_edges else (200, 100, 100)
+            pygame.draw.rect(screen, hard_edges_color, btn_hard_edges, border_radius=5)
+            hard_text = font.render(f"Contorno Sólido: {'ON' if is_hard_edges else 'OFF'}", True, (255, 255, 255))
+            screen.blit(hard_text, (btn_hard_edges.x + 20, btn_hard_edges.y + 12))
+
             # Desenha o botão de Guarda-Roupa
             pygame.draw.rect(screen, (150, 100, 200), btn_wardrobe, border_radius=5)
             pygame.draw.rect(screen, (255, 255, 255), btn_wardrobe, 2, border_radius=5)
@@ -918,7 +1154,7 @@ def main():
             char_center = (SCREEN_WIDTH // 2 + offsets['char'][0], SCREEN_HEIGHT // 2 + offsets['char'][1])
 
             # --- Desenho das Partes ---
-            draw_avatar(char_center)
+            draw_avatar(char_center, force_m=True)
             
             # --- Desenho da Interface de Ajuda ---
             if not dragging_part:
@@ -934,8 +1170,8 @@ def main():
             # Textos de ajuda
             title_text = font.render("Modo de Posição", True, (255, 255, 255))
             part_text = font.render(f"Editando: {selected_part_name}", True, (255, 255, 0))
-            controls_text1 = font.render("Arraste as peças com o MOUSE ou use as SETAS", True, (255, 255, 255))
-            controls_text2 = font.render("Pressione TAB para trocar a parte", True, (255, 255, 255))
+            controls_text1 = font.render("Arraste com o MOUSE, use as SETAS, ou SCROLL para Zoom", True, (255, 255, 255))
+            controls_text2 = font.render("Pressione TAB para trocar a peça atual", True, (255, 255, 255))
             screen.blit(title_text, (20, 20))
             screen.blit(part_text, (20, 60))
             screen.blit(controls_text1, (20, SCREEN_HEIGHT - 80))
@@ -971,44 +1207,69 @@ def main():
             back_surf = font.render("Voltar ao Menu", True, (255,255,255))
             screen.blit(back_surf, back_surf.get_rect(center=btn_wardrobe_back.center))
             
-            # Renderiza lista de itens
-            y_offset = 80
-            for i, item in enumerate(config.get('wardrobe', [])):
-                item_y = y_offset + i * 50 - wardrobe_scroll
-                if item_y < 70 or item_y > SCREEN_HEIGHT: continue
-                
-                # Toggle (Switch)
-                color_sw = (0, 200, 0) if item.get('active', True) else (100, 100, 100)
-                pygame.draw.rect(screen, color_sw, (20, item_y, 40, 40), border_radius=5)
-                
-                # Nome do item
-                name_text = font.render(item['name'][:11], True, (255, 255, 255))
-                screen.blit(name_text, (70, item_y + 10))
-                
-                # Botão Subir (^)
-                if i > 0:
-                    pygame.draw.rect(screen, (100, 150, 200), (200, item_y, 40, 40), border_radius=5)
-                    screen.blit(font.render("^", True, (255, 255, 255)), (212, item_y + 10))
+            # Renderiza lista de itens em acordeão
+            layout = get_wardrobe_layout(config, wardrobe_scroll, wardrobe_collapsed_cats)
+            for node in layout:
+                if node['type'] == 'header':
+                    if 70 <= node['rect'].y <= SCREEN_HEIGHT:
+                        pygame.draw.rect(screen, (70, 70, 90), node['rect'], border_radius=5)
+                        indicator = "+" if node['cat'] in wardrobe_collapsed_cats else "-"
+                        count_txt = f" ({node['count']})"
+                        cat_name = node['cat'].replace('_', ' ').title()
+                        screen.blit(font.render(f"{indicator} {cat_name}{count_txt}", True, (255, 255, 255)), (30, node['rect'].y + 10))
+                elif node['type'] == 'item':
+                    item_y = node['y']
+                    if item_y < 70 or item_y > SCREEN_HEIGHT: continue
                     
-                # Botão Descer (v)
-                if i < len(config.get('wardrobe', [])) - 1:
-                    pygame.draw.rect(screen, (100, 150, 200), (250, item_y, 40, 40), border_radius=5)
-                    screen.blit(font.render("v", True, (255, 255, 255)), (262, item_y + 10))
+                    item = node['item']
+                    cat = node['cat']
+                    idx_in_cat = node['idx_in_cat']
+                    total_in_cat = node['total_in_cat']
+                    
+                    # Toggle (Switch)
+                    color_sw = (0, 200, 0) if item.get('active', True) else (100, 100, 100)
+                    pygame.draw.rect(screen, color_sw, (20, item_y, 40, 40), border_radius=5)
+                    
+                    # Nome do item
+                    name_text = font.render(item['name'][:11], True, (255, 255, 255))
+                    screen.blit(name_text, (70, item_y + 10))
+                    
+                    # Botão Layer (F/M/T)
+                    current_layer = item.get('layer', get_default_layer(cat))
+                    if current_layer == 'frente':
+                        layer_color, layer_text = (200, 150, 50), "F"
+                    elif current_layer == 'meio':
+                        layer_color, layer_text = (150, 50, 200), "M"
+                    else:
+                        layer_color, layer_text = (50, 150, 200), "T"
+                        
+                    pygame.draw.rect(screen, layer_color, (200, item_y, 40, 40), border_radius=5)
+                    screen.blit(font.render(layer_text, True, (255, 255, 255)), (212, item_y + 10))
 
-                # Botão E (Editar)
-                pygame.draw.rect(screen, (200, 200, 100), (300, item_y, 40, 40), border_radius=5)
-                screen.blit(font.render("E", True, (0,0,0)), (312, item_y + 10))
-                
-                # Botão X (Excluir)
-                pygame.draw.rect(screen, (200, 50, 50), (350, item_y, 40, 40), border_radius=5)
-                screen.blit(font.render("X", True, (255,255,255)), (362, item_y + 10))
+                    # Botão Subir (^)
+                    if idx_in_cat > 0:
+                        pygame.draw.rect(screen, (100, 150, 200), (250, item_y, 40, 40), border_radius=5)
+                        screen.blit(font.render("^", True, (255, 255, 255)), (262, item_y + 10))
+                        
+                    # Botão Descer (v)
+                    if idx_in_cat < total_in_cat - 1:
+                        pygame.draw.rect(screen, (100, 150, 200), (300, item_y, 40, 40), border_radius=5)
+                        screen.blit(font.render("v", True, (255, 255, 255)), (312, item_y + 10))
+
+                    # Botão E (Editar)
+                    pygame.draw.rect(screen, (200, 200, 100), (350, item_y, 40, 40), border_radius=5)
+                    screen.blit(font.render("E", True, (0,0,0)), (362, item_y + 10))
+                    
+                    # Botão X (Excluir)
+                    pygame.draw.rect(screen, (200, 50, 50), (400, item_y, 40, 40), border_radius=5)
+                    screen.blit(font.render("X", True, (255,255,255)), (412, item_y + 10))
                 
             # Painel de Pré-visualização
             instr = font.render("Arraste os itens ativos para posicionar no personagem", True, (200, 200, 200))
             screen.blit(instr, (wardrobe_panel_width + 30, 20))
             preview_center_x = wardrobe_panel_width + (SCREEN_WIDTH - wardrobe_panel_width) // 2
             char_center = (preview_center_x + config['offsets']['char'][0], SCREEN_HEIGHT // 2 + config['offsets']['char'][1])
-            draw_avatar(char_center)
+            draw_avatar(char_center, force_m=True)
 
             # Desenha o destaque e texto de qual item está selecionado
             if wardrobe_selected_item_id:
@@ -1021,9 +1282,16 @@ def main():
                         highlight_rect.center = item_center
                         pygame.draw.rect(screen, (255, 255, 0), highlight_rect, 2)
                         
-                        extra_hint = " / SCROLL = Tamanho" if item.get('category') == 'objetos_de_cena' else ""
-                        sel_text = font.render(f"Editando: {item['name'][:15]} (SETAS = Mover{extra_hint})", True, (255, 255, 0))
+                        sel_text = font.render(f"Editando: {item['name'][:15]} (SETAS = Mover)", True, (255, 255, 0))
                         screen.blit(sel_text, (wardrobe_panel_width + 30, 50))
+                        
+                        slider_rect_w = pygame.Rect(wardrobe_panel_width + 30, 90, 200, 15)
+                        pygame.draw.rect(screen, (80, 80, 80), slider_rect_w, border_radius=8)
+                        knob_x = slider_rect_w.x + int(((scale - 0.1) / 4.9) * slider_rect_w.width)
+                        pygame.draw.circle(screen, (200, 200, 200), (knob_x, slider_rect_w.centery), 10)
+                        
+                        scale_text = font.render(f"Tamanho: {scale:.2f} (ou SCROLL)", True, (255, 255, 255))
+                        screen.blit(scale_text, (slider_rect_w.right + 20, slider_rect_w.y - 5))
                         break
 
         elif current_state == "RUNNING":
@@ -1044,12 +1312,8 @@ def main():
                         wardrobe_images.clear()
                         load_wardrobe_images(config, wardrobe_images)
                         
-                        for key in ["char", "eyes_open", "eyes_closed", "mouth_open"]:
-                            if paths.get(key) and os.path.exists(paths[key]):
-                                images[key] = pygame.image.load(paths[key]).convert_alpha()
-                            else:
-                                images[key] = None
-                                
+                        images.update(load_character_images_scaled(paths, SCREEN_WIDTH * 0.9, SCREEN_HEIGHT * 0.9, config.get('char_scale', 1.0)))
+
                         if config.get('audio_device') != selected_device_idx:
                             selected_device_idx = config.get('audio_device')
                             start_audio_stream(selected_device_idx)

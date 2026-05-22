@@ -1,26 +1,26 @@
 {
     "paths": {
-        "char": null,
-        "eyes_open": null,
-        "eyes_closed": null,
-        "mouth_open": null
+        "char": "D:/Users/Ademir/Downloads/Char.png",
+        "eyes_open": "D:/Users/Ademir/Downloads/olho_aberto.png",
+        "eyes_closed": "D:/Users/Ademir/Downloads/olho_fechado.png",
+        "mouth_open": "D:/Users/Ademir/Downloads/boca aberta.png"
     },
     "offsets": {
         "char": [
-            -21,
-            -20
+            42.622222222222234,
+            18.99444444444441
         ],
         "eyes": [
-            -314,
-            0
+            92.24682539682557,
+            -128.73015873015868
         ],
         "mouth": [
-            390,
-            0
+            103.80000000000001,
+            -65.69999999999996
         ]
     },
     "audio_device": 16,
-    "sound_threshold": 0.10211999999999999,
+    "sound_threshold": 0.157,
     "bg_color": [
         0,
         255,
@@ -28,7 +28,36 @@
     ],
     "transparent_window": true,
     "borderless_window": true,
-    "wardrobe": [],
+    "wardrobe": [
+        {
+            "name": "sith",
+            "category": "camisas",
+            "path": "D:/Users/Ademir/Downloads/wear_sith_cloth.png",
+            "offset": [
+                42,
+                61
+            ],
+            "scale": 0.15000000000000002,
+            "active": false,
+            "id": "1779481097.9854918",
+            "layer": "frente"
+        },
+        {
+            "name": "Joker",
+            "category": "maquiagem",
+            "layer": "meio",
+            "path": "D:/Users/Ademir/Downloads/accesories_joker_face.png",
+            "offset": [
+                94,
+                -113
+            ],
+            "scale": 0.13999999999999999,
+            "active": false,
+            "id": "1779482087.8626235"
+        }
+    ],
     "animations_enabled": true,
-    "fps_limit": 30
+    "fps_limit": 30,
+    "char_scale": 0.6500000000000002,
+    "hard_edges": true
 }
