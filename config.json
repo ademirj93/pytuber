@@ -1,9 +1,9 @@
 {
     "paths": {
-        "char": "C:/Users/amoreno/Downloads/chat.png",
-        "eyes_open": "C:/Users/amoreno/Downloads/whatsapp_889154.png",
-        "eyes_closed": "C:/Users/amoreno/Downloads/logo_un.png",
-        "mouth_open": "C:/Users/amoreno/Downloads/tools.png"
+        "char": null,
+        "eyes_open": null,
+        "eyes_closed": null,
+        "mouth_open": null
     },
     "offsets": {
         "char": [
@@ -18,5 +18,15 @@
             390,
             0
         ]
-    }
+    },
+    "audio_device": 16,
+    "sound_threshold": 0.10211999999999999,
+    "bg_color": [
+        0,
+        255,
+        0
+    ],
+    "transparent_window": true,
+    "borderless_window": true,
+    "wardrobe": []
 }
