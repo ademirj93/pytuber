@@ -28,5 +28,7 @@
     ],
     "transparent_window": true,
     "borderless_window": true,
-    "wardrobe": []
+    "wardrobe": [],
+    "animations_enabled": true,
+    "fps_limit": 30
 }

@@ -35,6 +35,7 @@ def load_config():
         "transparent_window": False,
         "borderless_window": False,
         "animations_enabled": True,
+        "fps_limit": 60,
         "wardrobe": []
     }
     if os.path.exists(CONFIG_FILE):
@@ -50,6 +51,7 @@ def load_config():
                 config.setdefault('transparent_window', defaults['transparent_window'])
                 config.setdefault('borderless_window', defaults['borderless_window'])
                 config.setdefault('animations_enabled', defaults['animations_enabled'])
+                config.setdefault('fps_limit', defaults['fps_limit'])
                 config.setdefault('wardrobe', defaults['wardrobe'])
                 # Garante que as sub-chaves existam
                 for part in defaults['offsets']:
@@ -274,6 +276,7 @@ def main():
     btn_borderless = pygame.Rect(420, 560, 250, 50)
     btn_wardrobe = pygame.Rect(700, 560, 250, 50)
     btn_animations = pygame.Rect(420, 620, 250, 50)
+    btn_fps = pygame.Rect(700, 620, 250, 50)
     btn_positioning_save = pygame.Rect(SCREEN_WIDTH - 270, SCREEN_HEIGHT - 70, 250, 50)
     
     # Calcula o tamanho dos botões dinamicamente baseado no texto (+30px de margem horizontal)
@@ -505,6 +508,9 @@ def main():
                         save_config(config)
                     elif btn_animations.collidepoint(pos):
                         config['animations_enabled'] = not config.get('animations_enabled', True)
+                        save_config(config)
+                    elif btn_fps.collidepoint(pos):
+                        config['fps_limit'] = 30 if config.get('fps_limit', 60) == 60 else 60
                         save_config(config)
                     elif btn_wardrobe.collidepoint(pos):
                         current_state = "WARDROBE"
@@ -851,6 +857,13 @@ def main():
             anim_text = font.render(f"Animações: {'ON' if is_anim_enabled else 'OFF'}", True, (255, 255, 255))
             screen.blit(anim_text, (btn_animations.x + 20, btn_animations.y + 12))
 
+            # Desenha o botão de Limite de FPS
+            current_fps = config.get('fps_limit', 60)
+            fps_color = (0, 200, 0) if current_fps == 60 else (200, 150, 0)
+            pygame.draw.rect(screen, fps_color, btn_fps, border_radius=5)
+            fps_text = font.render(f"FPS: {current_fps}", True, (255, 255, 255))
+            screen.blit(fps_text, (btn_fps.x + 20, btn_fps.y + 12))
+
             # Desenha o botão de Guarda-Roupa
             pygame.draw.rect(screen, (150, 100, 200), btn_wardrobe, border_radius=5)
             pygame.draw.rect(screen, (255, 255, 255), btn_wardrobe, 2, border_radius=5)
@@ -1091,7 +1104,7 @@ def main():
                 screen.blit(p_surf, (20, 20))
 
         pygame.display.flip()
-        clock.tick(FPS)
+        clock.tick(config.get('fps_limit', 60))
 
     pygame.quit()
 
