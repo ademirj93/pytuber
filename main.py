@@ -11,6 +11,14 @@ import time
 import json
 import os
 import math
+import shutil
+import copy
+
+try:
+    import pyvirtualcam
+    HAS_VIRTUALCAM = True
+except ImportError:
+    HAS_VIRTUALCAM = False
 
 def resource_path(relative_path):
     """Obtém o caminho absoluto para o recurso, funciona para dev e para o executável do PyInstaller."""
@@ -46,7 +54,8 @@ def load_config():
         "fps_limit": 60,
         "wardrobe": [],
         "char_scale": 1.0,
-        "hard_edges": False
+        "hard_edges": False,
+        "virtual_camera": False
     }
     if os.path.exists(CONFIG_FILE):
         try:
@@ -65,6 +74,7 @@ def load_config():
                 config.setdefault('wardrobe', defaults['wardrobe'])
                 config.setdefault('char_scale', defaults['char_scale'])
                 config.setdefault('hard_edges', defaults['hard_edges'])
+                config.setdefault('virtual_camera', defaults['virtual_camera'])
                 # Garante que as sub-chaves existam
                 for part in defaults['offsets']:
                     config['offsets'].setdefault(part, defaults['offsets'][part])
@@ -81,6 +91,27 @@ def save_config(config):
             json.dump(config, f, indent=4)
     except Exception as e:
         print(f"Erro ao salvar configurações: {e}")
+
+def import_image_to_assets(source_path, subfolder):
+    """Copia a imagem selecionada para a pasta assets e retorna o novo caminho."""
+    if not source_path or not os.path.exists(source_path):
+        return source_path
+        
+    assets_dir = os.path.join("assets", subfolder)
+    os.makedirs(assets_dir, exist_ok=True)
+    
+    filename = os.path.basename(source_path)
+    dest_path = os.path.join(assets_dir, filename)
+    
+    # Só copia se a origem e o destino forem caminhos diferentes
+    if os.path.abspath(source_path) != os.path.abspath(dest_path):
+        try:
+            shutil.copy2(source_path, dest_path)
+        except Exception as e:
+            print(f"Erro ao copiar imagem para assets: {e}")
+            return source_path
+            
+    return dest_path
 
 # --- Estado do Personagem ---
 is_speaking = False
@@ -220,11 +251,14 @@ def edit_wardrobe_item_dialog(item=None):
     def save():
         nonlocal result
         if not name_var.get() or not path_var.get(): return
+        
+        final_path = import_image_to_assets(path_var.get(), cat_var.get())
+        
         result = {
             'name': name_var.get(),
             'category': cat_var.get(),
             'layer': layer_var.get(),
-            'path': path_var.get(),
+            'path': final_path,
             'offset': item.get('offset', [0, 0]) if item else [0, 0],
             'scale': item.get('scale', 1.0) if item else 1.0,
             'active': item.get('active', True) if item else True,
@@ -340,7 +374,7 @@ def main():
 
     # --- Configuração da Janela ---
     screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
-    pygame.display.set_caption("Personagem Interativo")
+    pygame.display.set_caption("Pytuber V0.9")
     clock = pygame.time.Clock()
     font = pygame.font.SysFont(None, 36)
 
@@ -373,6 +407,17 @@ def main():
     # Superfície para o Contorno Sólido
     composition_surface = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
 
+    # --- Sistema de Desfazer (Undo) ---
+    undo_stack = []
+    pre_drag_state = None
+    last_continuous_action_time = 0
+    
+    def save_state_for_undo():
+        state = copy.deepcopy({'offsets': config['offsets'], 'wardrobe': config['wardrobe'], 'char_scale': config.get('char_scale', 1.0)})
+        undo_stack.append(state)
+        if len(undo_stack) > 50:
+            undo_stack.pop(0)
+
     # Botões da interface (posição x, posição y, largura, altura)
     btn_char = pygame.Rect(50, 50, 350, 40)
     btn_eyes_open = pygame.Rect(50, 110, 350, 40)
@@ -394,6 +439,7 @@ def main():
     btn_animations = pygame.Rect(420, 620, 250, 50)
     btn_fps = pygame.Rect(700, 620, 250, 50)
     btn_hard_edges = pygame.Rect(50, 620, 350, 50)
+    btn_virtualcam = pygame.Rect(960, 500, 300, 50)
     btn_positioning_save = pygame.Rect(SCREEN_WIDTH - 270, SCREEN_HEIGHT - 70, 250, 50)
     
     # Calcula o tamanho dos botões dinamicamente baseado no texto (+30px de margem horizontal)
@@ -502,6 +548,7 @@ def main():
     current_profile_index = -1
     profile_notif_text = ""
     profile_notif_time = 0
+    vcam = None
 
     running = True
     while running:
@@ -510,6 +557,11 @@ def main():
                 running = False
             elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                 # Se o botão esquerdo do mouse for clicado
+                
+                # Captura o estado antes de qualquer arraste ou edição pelo mouse
+                if current_state in ["POSITIONING", "WARDROBE"]:
+                    pre_drag_state = copy.deepcopy({'offsets': config['offsets'], 'wardrobe': config['wardrobe'], 'char_scale': config.get('char_scale', 1.0)})
+                    
                 if current_state == "MENU":
                     pos = event.pos
                     
@@ -540,22 +592,22 @@ def main():
                     if btn_char.collidepoint(pos):
                         new_path = get_file("Selecione a imagem base do Personagem")
                         if new_path:
-                            config['paths']["char"] = new_path
+                            config['paths']["char"] = import_image_to_assets(new_path, "base")
                             save_config(config)
                     elif btn_eyes_open.collidepoint(pos):
                         new_path = get_file("Selecione a imagem de Olhos Abertos")
                         if new_path:
-                            config['paths']["eyes_open"] = new_path
+                            config['paths']["eyes_open"] = import_image_to_assets(new_path, "base")
                             save_config(config)
                     elif btn_eyes_closed.collidepoint(pos):
                         new_path = get_file("Selecione a imagem de Olhos Fechados")
                         if new_path:
-                            config['paths']["eyes_closed"] = new_path
+                            config['paths']["eyes_closed"] = import_image_to_assets(new_path, "base")
                             save_config(config)
                     elif btn_mouth_open.collidepoint(pos):
                         new_path = get_file("Selecione a imagem de Boca Aberta")
                         if new_path:
-                            config['paths']["mouth_open"] = new_path
+                            config['paths']["mouth_open"] = import_image_to_assets(new_path, "base")
                             save_config(config)
                     elif btn_device.collidepoint(pos) and input_devices:
                         dropdown_open = True
@@ -599,6 +651,16 @@ def main():
                             else:
                                 screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
                             set_window_transparency(config['bg_color'], config.get('transparent_window', False))
+                            
+                            if config.get('virtual_camera', False) and HAS_VIRTUALCAM:
+                                try:
+                                    vcam = pyvirtualcam.Camera(width=SCREEN_WIDTH, height=SCREEN_HEIGHT, fps=config.get('fps_limit', 60), fmt=pyvirtualcam.PixelFormat.RGB)
+                                except Exception as e:
+                                    print(f"Erro ao iniciar câmera virtual: {e}")
+                                    vcam = None
+                                    notification_text = "Erro Câm. Virtual! (Inicie o OBS Studio e ative a Câmera)"
+                                    notification_time = time.time()
+                                    config['virtual_camera'] = False
                             
                         except Exception as e:
                             print(f"Erro ao carregar imagem: {e}")
@@ -646,6 +708,13 @@ def main():
                     elif btn_hard_edges.collidepoint(pos):
                         config['hard_edges'] = not config.get('hard_edges', False)
                         save_config(config)
+                    elif btn_virtualcam.collidepoint(pos):
+                        if HAS_VIRTUALCAM:
+                            config['virtual_camera'] = not config.get('virtual_camera', False)
+                            save_config(config)
+                        else:
+                            notification_text = "Erro: No terminal digite: pip install pyvirtualcam"
+                            notification_time = time.time()
                     elif btn_wardrobe.collidepoint(pos):
                         current_state = "WARDROBE"
                         load_wardrobe_images(config, wardrobe_images)
@@ -675,6 +744,7 @@ def main():
                             try:
                                 with open(p, 'r') as f:
                                     config.update(json.load(f))
+                                undo_stack.clear()
                                 save_config(config)
                                 paths = config['paths']
                                 offsets = config['offsets']
@@ -731,6 +801,10 @@ def main():
                     if btn_add_wardrobe.collidepoint(event.pos):
                         new_item = edit_wardrobe_item_dialog()
                         if new_item:
+                            if pre_drag_state:
+                                undo_stack.append(pre_drag_state)
+                                if len(undo_stack) > 50: undo_stack.pop(0)
+                                pre_drag_state = None
                             config['wardrobe'].append(new_item)
                             save_config(config)
                             load_wardrobe_images(config, wardrobe_images)
@@ -759,7 +833,14 @@ def main():
                                     save_config(config)
                                     clicked_list = True
                                     break
-                                elif pygame.Rect(200, item_y, 40, 40).collidepoint(event.pos):
+                                elif pygame.Rect(160, item_y, 40, 40).collidepoint(event.pos):
+                                    item['locked'] = not item.get('locked', False)
+                                    if item['locked'] and wardrobe_dragging_item_id == item['id']:
+                                        wardrobe_dragging_item_id = None
+                                    save_config(config)
+                                    clicked_list = True
+                                    break
+                                elif pygame.Rect(210, item_y, 40, 40).collidepoint(event.pos):
                                     cat = item.get('category')
                                     current_layer = item.get('layer', get_default_layer(cat))
                                     if current_layer == 'frente':
@@ -771,20 +852,24 @@ def main():
                                     save_config(config)
                                     clicked_list = True
                                     break
-                                elif pygame.Rect(350, item_y, 40, 40).collidepoint(event.pos):
+                                elif pygame.Rect(360, item_y, 40, 40).collidepoint(event.pos):
                                     edited = edit_wardrobe_item_dialog(item)
                                     if edited:
+                                        if pre_drag_state:
+                                            undo_stack.append(pre_drag_state)
+                                            if len(undo_stack) > 50: undo_stack.pop(0)
+                                            pre_drag_state = None
                                         config['wardrobe'][i] = edited
                                         save_config(config)
                                         load_wardrobe_images(config, wardrobe_images)
                                     clicked_list = True
                                     break
-                                elif pygame.Rect(400, item_y, 40, 40).collidepoint(event.pos):
+                                elif pygame.Rect(410, item_y, 40, 40).collidepoint(event.pos):
                                     del config['wardrobe'][i]
                                     save_config(config)
                                     clicked_list = True
                                     break
-                                elif pygame.Rect(250, item_y, 40, 40).collidepoint(event.pos) and node['idx_in_cat'] > 0:
+                                elif pygame.Rect(260, item_y, 40, 40).collidepoint(event.pos) and node['idx_in_cat'] > 0:
                                     for prev_i in range(i - 1, -1, -1):
                                         if config['wardrobe'][prev_i]['category'] == node['cat']:
                                             config['wardrobe'][i], config['wardrobe'][prev_i] = config['wardrobe'][prev_i], config['wardrobe'][i]
@@ -792,7 +877,7 @@ def main():
                                     save_config(config)
                                     clicked_list = True
                                     break
-                                elif pygame.Rect(300, item_y, 40, 40).collidepoint(event.pos) and node['idx_in_cat'] < node['total_in_cat'] - 1:
+                                elif pygame.Rect(310, item_y, 40, 40).collidepoint(event.pos) and node['idx_in_cat'] < node['total_in_cat'] - 1:
                                     for next_i in range(i + 1, len(config['wardrobe'])):
                                         if config['wardrobe'][next_i]['category'] == node['cat']:
                                             config['wardrobe'][i], config['wardrobe'][next_i] = config['wardrobe'][next_i], config['wardrobe'][i]
@@ -835,17 +920,41 @@ def main():
                                     item_center = (char_center[0] + item['offset'][0], char_center[1] + item['offset'][1])
                                     item_rect.center = item_center
                                     if item_rect.collidepoint(event.pos):
-                                        wardrobe_dragging_item_id = item['id']
                                         wardrobe_selected_item_id = item['id']
+                                        if not item.get('locked', False):
+                                            wardrobe_dragging_item_id = item['id']
                                         break
             
             elif event.type == pygame.KEYDOWN:
-                if event.key == pygame.K_ESCAPE and current_state == "RUNNING":
+                if event.key == pygame.K_z and (pygame.key.get_mods() & pygame.KMOD_CTRL):
+                    if undo_stack:
+                        last_state = undo_stack.pop()
+                        config['offsets'] = copy.deepcopy(last_state['offsets'])
+                        config['wardrobe'] = copy.deepcopy(last_state['wardrobe'])
+                        config['char_scale'] = last_state['char_scale']
+                        offsets = config['offsets']
+                        save_config(config)
+                        try:
+                            images.update(load_character_images_scaled(paths, SCREEN_WIDTH * 0.9, SCREEN_HEIGHT * 0.9, config.get('char_scale', 1.0)))
+                            wardrobe_images.clear()
+                            load_wardrobe_images(config, wardrobe_images)
+                        except Exception: pass
+                        notification_text = "Ação desfeita!"
+                        notification_time = time.time()
+                elif event.key == pygame.K_ESCAPE and current_state == "RUNNING":
                     current_state = "MENU"
                     screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
                     set_window_transparency(config['bg_color'], False)
+                    if vcam:
+                        vcam.close()
+                        vcam = None
                 
                 elif current_state == "POSITIONING":
+                    if event.key in [pygame.K_UP, pygame.K_DOWN, pygame.K_LEFT, pygame.K_RIGHT]:
+                        if time.time() - last_continuous_action_time > 0.5:
+                            save_state_for_undo()
+                        last_continuous_action_time = time.time()
+                        
                     selected_part = parts_list[editing_part_index]
                     step = 10 if pygame.key.get_mods() & pygame.KMOD_SHIFT else 1
 
@@ -858,17 +967,28 @@ def main():
                         
                 elif current_state == "WARDROBE" and wardrobe_selected_item_id:
                     # Permite ajuste fino com as setas para a roupa selecionada
-                    step = 10 if pygame.key.get_mods() & pygame.KMOD_SHIFT else 1
-                    for item in config['wardrobe']:
-                        if item['id'] == wardrobe_selected_item_id:
+                    if event.key in [pygame.K_UP, pygame.K_DOWN, pygame.K_LEFT, pygame.K_RIGHT]:
+                        item = next((i for i in config['wardrobe'] if i['id'] == wardrobe_selected_item_id), None)
+                        if item and not item.get('locked', False):
+                            if time.time() - last_continuous_action_time > 0.5:
+                                save_state_for_undo()
+                            last_continuous_action_time = time.time()
+                            
+                            step = 10 if pygame.key.get_mods() & pygame.KMOD_SHIFT else 1
                             if event.key == pygame.K_UP: item['offset'][1] -= step
                             elif event.key == pygame.K_DOWN: item['offset'][1] += step
                             elif event.key == pygame.K_LEFT: item['offset'][0] -= step
                             elif event.key == pygame.K_RIGHT: item['offset'][0] += step
                             save_config(config)
-                            break
 
             elif event.type == pygame.MOUSEBUTTONUP and event.button == 1:
+                if pre_drag_state:
+                    current_state_snap = copy.deepcopy({'offsets': config['offsets'], 'wardrobe': config['wardrobe'], 'char_scale': config.get('char_scale', 1.0)})
+                    if current_state_snap != pre_drag_state:
+                        undo_stack.append(pre_drag_state)
+                        if len(undo_stack) > 50: undo_stack.pop(0)
+                    pre_drag_state = None
+                    
                 if dragging_slider:
                     dragging_slider = False
                     config['sound_threshold'] = SOUND_THRESHOLD
@@ -893,12 +1013,21 @@ def main():
                     elif wardrobe_selected_item_id:
                         for item in config['wardrobe']:
                             if item['id'] == wardrobe_selected_item_id:
-                                scale = item.get('scale', 1.0)
-                                scale += event.y * 0.01
-                                item['scale'] = max(0.1, min(5.0, scale))
-                                save_config(config)
+                                if not item.get('locked', False):
+                                    if time.time() - last_continuous_action_time > 0.5:
+                                        save_state_for_undo()
+                                    last_continuous_action_time = time.time()
+                                    
+                                    scale = item.get('scale', 1.0)
+                                    scale += event.y * 0.02
+                                    item['scale'] = max(0.1, min(5.0, scale))
+                                    save_config(config)
                                 break
                 elif current_state == "POSITIONING":
+                    if time.time() - last_continuous_action_time > 0.5:
+                        save_state_for_undo()
+                    last_continuous_action_time = time.time()
+                    
                     # Zoom no personagem inteiro de forma centralizada!
                     manual_scale = config.get('char_scale', 1.0)
                     new_scale = manual_scale + (event.y * 0.01)
@@ -934,7 +1063,8 @@ def main():
                     new_scale = 0.1 + (rel_x / slider_rect_w.width) * 4.9
                     for item in config['wardrobe']:
                         if item['id'] == wardrobe_selected_item_id:
-                            item['scale'] = round(new_scale, 2)
+                            if not item.get('locked', False):
+                                item['scale'] = round(new_scale, 2)
                             break
                 elif current_state == "POSITIONING" and dragging_part:
                     offsets[dragging_part][0] += event.rel[0]
@@ -1099,6 +1229,18 @@ def main():
             pygame.draw.rect(screen, hard_edges_color, btn_hard_edges, border_radius=5)
             hard_text = font.render(f"Contorno Sólido: {'ON' if is_hard_edges else 'OFF'}", True, (255, 255, 255))
             screen.blit(hard_text, (btn_hard_edges.x + 20, btn_hard_edges.y + 12))
+            
+            # Desenha o botão de Câmera Virtual
+            is_vcam = config.get('virtual_camera', False)
+            if not HAS_VIRTUALCAM:
+                vcam_color = (100, 100, 100)
+                vcam_text_str = "Virtual Cam (Requer Lib)"
+            else:
+                vcam_color = (0, 200, 0) if is_vcam else (200, 100, 100)
+                vcam_text_str = f"Câmera Virtual: {'ON' if is_vcam else 'OFF'}"
+            pygame.draw.rect(screen, vcam_color, btn_virtualcam, border_radius=5)
+            vcam_text = font.render(vcam_text_str, True, (255, 255, 255))
+            screen.blit(vcam_text, (btn_virtualcam.x + (btn_virtualcam.width - vcam_text.get_width()) // 2, btn_virtualcam.y + 12))
 
             # Desenha o botão de Guarda-Roupa
             pygame.draw.rect(screen, (150, 100, 200), btn_wardrobe, border_radius=5)
@@ -1231,8 +1373,18 @@ def main():
                     pygame.draw.rect(screen, color_sw, (20, item_y, 40, 40), border_radius=5)
                     
                     # Nome do item
-                    name_text = font.render(item['name'][:11], True, (255, 255, 255))
+                    name_text = font.render(item['name'][:9], True, (255, 255, 255))
                     screen.blit(name_text, (70, item_y + 10))
+                    
+                    # Botão Lock
+                    is_locked = item.get('locked', False)
+                    lock_color = (200, 50, 50) if is_locked else (80, 80, 80)
+                    pygame.draw.rect(screen, lock_color, (160, item_y, 40, 40), border_radius=5)
+                    pygame.draw.rect(screen, (255,255,255), (170, item_y+20, 20, 12), border_radius=2)
+                    if is_locked:
+                        pygame.draw.arc(screen, (255,255,255), (174, item_y+10, 12, 12), 0, math.pi, 2)
+                    else:
+                        pygame.draw.arc(screen, (255,255,255), (174, item_y+8, 12, 12), math.pi/2, math.pi, 2)
                     
                     # Botão Layer (F/M/T)
                     current_layer = item.get('layer', get_default_layer(cat))
@@ -1243,26 +1395,26 @@ def main():
                     else:
                         layer_color, layer_text = (50, 150, 200), "T"
                         
-                    pygame.draw.rect(screen, layer_color, (200, item_y, 40, 40), border_radius=5)
-                    screen.blit(font.render(layer_text, True, (255, 255, 255)), (212, item_y + 10))
+                    pygame.draw.rect(screen, layer_color, (210, item_y, 40, 40), border_radius=5)
+                    screen.blit(font.render(layer_text, True, (255, 255, 255)), (222, item_y + 10))
 
                     # Botão Subir (^)
                     if idx_in_cat > 0:
-                        pygame.draw.rect(screen, (100, 150, 200), (250, item_y, 40, 40), border_radius=5)
-                        screen.blit(font.render("^", True, (255, 255, 255)), (262, item_y + 10))
+                        pygame.draw.rect(screen, (100, 150, 200), (260, item_y, 40, 40), border_radius=5)
+                        screen.blit(font.render("^", True, (255, 255, 255)), (272, item_y + 10))
                         
                     # Botão Descer (v)
                     if idx_in_cat < total_in_cat - 1:
-                        pygame.draw.rect(screen, (100, 150, 200), (300, item_y, 40, 40), border_radius=5)
-                        screen.blit(font.render("v", True, (255, 255, 255)), (312, item_y + 10))
+                        pygame.draw.rect(screen, (100, 150, 200), (310, item_y, 40, 40), border_radius=5)
+                        screen.blit(font.render("v", True, (255, 255, 255)), (322, item_y + 10))
 
                     # Botão E (Editar)
-                    pygame.draw.rect(screen, (200, 200, 100), (350, item_y, 40, 40), border_radius=5)
-                    screen.blit(font.render("E", True, (0,0,0)), (362, item_y + 10))
+                    pygame.draw.rect(screen, (200, 200, 100), (360, item_y, 40, 40), border_radius=5)
+                    screen.blit(font.render("E", True, (0,0,0)), (372, item_y + 10))
                     
                     # Botão X (Excluir)
-                    pygame.draw.rect(screen, (200, 50, 50), (400, item_y, 40, 40), border_radius=5)
-                    screen.blit(font.render("X", True, (255,255,255)), (412, item_y + 10))
+                    pygame.draw.rect(screen, (200, 50, 50), (410, item_y, 40, 40), border_radius=5)
+                    screen.blit(font.render("X", True, (255,255,255)), (422, item_y + 10))
                 
             # Painel de Pré-visualização
             instr = font.render("Arraste os itens ativos para posicionar no personagem", True, (200, 200, 200))
@@ -1280,18 +1432,26 @@ def main():
                         scale = item.get('scale', 1.0)
                         highlight_rect = pygame.Rect(0, 0, max(1, int(img_w * scale)), max(1, int(img_h * scale)))
                         highlight_rect.center = item_center
-                        pygame.draw.rect(screen, (255, 255, 0), highlight_rect, 2)
                         
-                        sel_text = font.render(f"Editando: {item['name'][:15]} (SETAS = Mover)", True, (255, 255, 0))
+                        is_locked = item.get('locked', False)
+                        hl_color = (255, 50, 50) if is_locked else (255, 255, 0)
+                        pygame.draw.rect(screen, hl_color, highlight_rect, 2)
+                        
+                        if is_locked:
+                            sel_text = font.render(f"Travado: {item['name'][:12]} (Destrave p/ mover)", True, hl_color)
+                        else:
+                            sel_text = font.render(f"Editando: {item['name'][:15]} (SETAS = Mover)", True, hl_color)
+                            
                         screen.blit(sel_text, (wardrobe_panel_width + 30, 50))
                         
-                        slider_rect_w = pygame.Rect(wardrobe_panel_width + 30, 90, 200, 15)
-                        pygame.draw.rect(screen, (80, 80, 80), slider_rect_w, border_radius=8)
-                        knob_x = slider_rect_w.x + int(((scale - 0.1) / 4.9) * slider_rect_w.width)
-                        pygame.draw.circle(screen, (200, 200, 200), (knob_x, slider_rect_w.centery), 10)
-                        
-                        scale_text = font.render(f"Tamanho: {scale:.2f} (ou SCROLL)", True, (255, 255, 255))
-                        screen.blit(scale_text, (slider_rect_w.right + 20, slider_rect_w.y - 5))
+                        if not is_locked:
+                            slider_rect_w = pygame.Rect(wardrobe_panel_width + 30, 90, 200, 15)
+                            pygame.draw.rect(screen, (80, 80, 80), slider_rect_w, border_radius=8)
+                            knob_x = slider_rect_w.x + int(((scale - 0.1) / 4.9) * slider_rect_w.width)
+                            pygame.draw.circle(screen, (200, 200, 200), (knob_x, slider_rect_w.centery), 10)
+                            
+                            scale_text = font.render(f"Tamanho: {scale:.2f} (ou SCROLL)", True, (255, 255, 255))
+                            screen.blit(scale_text, (slider_rect_w.right + 20, slider_rect_w.y - 5))
                         break
 
         elif current_state == "RUNNING":
@@ -1313,6 +1473,15 @@ def main():
                         load_wardrobe_images(config, wardrobe_images)
                         
                         images.update(load_character_images_scaled(paths, SCREEN_WIDTH * 0.9, SCREEN_HEIGHT * 0.9, config.get('char_scale', 1.0)))
+
+                        if vcam:
+                            vcam.close()
+                            vcam = None
+                        if config.get('virtual_camera', False) and HAS_VIRTUALCAM:
+                            try:
+                                vcam = pyvirtualcam.Camera(width=SCREEN_WIDTH, height=SCREEN_HEIGHT, fps=config.get('fps_limit', 60), fmt=pyvirtualcam.PixelFormat.RGB)
+                            except Exception:
+                                vcam = None
 
                         if config.get('audio_device') != selected_device_idx:
                             selected_device_idx = config.get('audio_device')
@@ -1367,9 +1536,21 @@ def main():
                 pygame.draw.rect(screen, (0, 0, 0), (15, 15, p_surf.get_width() + 10, p_surf.get_height() + 10), border_radius=5)
                 screen.blit(p_surf, (20, 20))
 
+            # --- Envia o Frame para a Câmera Virtual ---
+            if vcam:
+                try:
+                    # Captura a tela do pygame, inverte x e y, e envia para a câmera virtual
+                    frame = pygame.surfarray.array3d(screen)
+                    frame = np.swapaxes(frame, 0, 1)
+                    vcam.send(frame)
+                except Exception as e:
+                    pass
+
         pygame.display.flip()
         clock.tick(config.get('fps_limit', 60))
 
+    if vcam:
+        vcam.close()
     pygame.quit()
 
 if __name__ == '__main__':
