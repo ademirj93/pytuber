@@ -1,9 +1,9 @@
 {
     "paths": {
-        "char": "D:/Users/Ademir/Downloads/Char.png",
-        "eyes_open": "D:/Users/Ademir/Downloads/olho_aberto.png",
-        "eyes_closed": "D:/Users/Ademir/Downloads/olho_fechado.png",
-        "mouth_open": "D:/Users/Ademir/Downloads/boca aberta.png"
+        "char": null,
+        "eyes_open": null,
+        "eyes_closed": null,
+        "mouth_open": null
     },
     "offsets": {
         "char": [
@@ -45,7 +45,7 @@
         {
             "name": "Joker",
             "category": "maquiagem",
-            "layer": "meio",
+            "layer": "tr\u00e1s",
             "path": "D:/Users/Ademir/Downloads/accesories_joker_face.png",
             "offset": [
                 94,
@@ -59,5 +59,6 @@
     "animations_enabled": true,
     "fps_limit": 30,
     "char_scale": 0.6500000000000002,
-    "hard_edges": true
+    "hard_edges": true,
+    "virtual_camera": false
 }

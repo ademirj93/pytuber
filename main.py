@@ -227,7 +227,7 @@ def edit_wardrobe_item_dialog(item=None):
     tk.Entry(dialog, textvariable=name_var).pack()
     
     tk.Label(dialog, text="Categoria:").pack(pady=5)
-    categories = ["chapéus", "acessórios", "maquiagem", "calças", "casacos", "camisas", "objetos_de_cena"]
+    categories = ["chapéus", "acessórios", "maquiagem", "calças", "casacos", "camisas", "objetos_de_cena", "cor_dos_olhos"]
     cat_var = tk.StringVar(value=item['category'] if item else categories[0])
     tk.OptionMenu(dialog, cat_var, *categories).pack()
     
@@ -329,7 +329,7 @@ def load_character_images_scaled(paths, max_w, max_h, manual_scale=1.0):
 
 def get_wardrobe_layout(config, wardrobe_scroll, collapsed_cats):
     """Calcula o layout em acordeão das categorias do guarda-roupa."""
-    categories = ["chapéus", "acessórios", "maquiagem", "calças", "casacos", "camisas", "objetos_de_cena"]
+    categories = ["chapéus", "acessórios", "maquiagem", "calças", "casacos", "camisas", "objetos_de_cena", "cor_dos_olhos"]
     layout = []
     
     draw_y = 80 - wardrobe_scroll
@@ -497,11 +497,29 @@ def main():
         else:
             target_surf = screen
             
-        def draw_layer_items(layer_target):
+        eyes_are_open = not (is_blinking or force_e)
+
+        def draw_layer_items(layer_target, surf=None, transparent_pass=False):
+            if surf is None:
+                surf = target_surf
             for w_item in config.get('wardrobe', []):
                 cat = w_item.get('category')
                 item_layer = w_item.get('layer', get_default_layer(cat))
                 
+                is_transparent_cat = cat in ["objetos_de_cena", "cor_dos_olhos"]
+                
+                if is_hard_edges:
+                    if transparent_pass and not is_transparent_cat:
+                        continue
+                    if not transparent_pass and is_transparent_cat:
+                        continue
+                else:
+                    if transparent_pass:
+                        continue
+                        
+                if cat == "cor_dos_olhos" and not eyes_are_open:
+                    continue
+
                 if w_item.get('active') and item_layer == layer_target and w_item['id'] in wardrobe_images:
                     img = wardrobe_images[w_item['id']]
                     scale = w_item.get('scale', 1.0)
@@ -511,7 +529,7 @@ def main():
                     # Objetos de cena são estáticos, ignoram a animação
                     center_to_use = base_char_center if cat == "objetos_de_cena" else anim_char_center
                     item_c = (center_to_use[0] + w_item['offset'][0], center_to_use[1] + w_item['offset'][1])
-                    target_surf.blit(img, img.get_rect(center=item_c))
+                    surf.blit(img, img.get_rect(center=item_c))
                     
         # Camadas Fundo -> Frente
         draw_layer_items('trás')
@@ -522,9 +540,9 @@ def main():
         draw_layer_items('meio')
             
         eyes_c = (anim_char_center[0] + offsets['eyes'][0], anim_char_center[1] + offsets['eyes'][1])
-        if (is_blinking or force_e) and "eyes_closed" in images and images["eyes_closed"]:
+        if not eyes_are_open and "eyes_closed" in images and images["eyes_closed"]:
             target_surf.blit(images["eyes_closed"], images["eyes_closed"].get_rect(center=eyes_c))
-        elif not (is_blinking or force_e) and "eyes_open" in images and images["eyes_open"]:
+        elif eyes_are_open and "eyes_open" in images and images["eyes_open"]:
             target_surf.blit(images["eyes_open"], images["eyes_open"].get_rect(center=eyes_c))
             
         mouth_c = (anim_char_center[0] + offsets['mouth'][0], anim_char_center[1] + offsets['mouth'][1])
@@ -535,7 +553,10 @@ def main():
         
         if is_hard_edges:
             target_surf = remove_soft_edges(target_surf)
+            draw_layer_items('trás', screen, transparent_pass=True)
             screen.blit(target_surf, (0, 0))
+            draw_layer_items('meio', screen, transparent_pass=True)
+            draw_layer_items('frente', screen, transparent_pass=True)
 
     dragging_part = None
     wardrobe_dragging_item_id = None
