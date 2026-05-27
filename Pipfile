@@ -9,6 +9,7 @@ numpy = "==2.4.6"
 pycparser = "==3.0"
 pygame-ce = "==2.5.7"
 sounddevice = "==0.5.5"
+pyvirtualcam = "*"
 
 [dev-packages]
 
