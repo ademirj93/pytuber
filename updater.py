@@ -17,7 +17,7 @@ import urllib.request
 import urllib.error
 
 # --- Versão e Metadados Centrais ---
-APP_VERSION = "0.11.25b2"
+APP_VERSION = "0.11.25b3"
 RELEASE_DATE = "25/11/2026"
 GITHUB_OWNER = "ademirj93"
 GITHUB_REPO = "pytuber"

@@ -7,114 +7,60 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ---
 
-## [0.9.0] - 25/11/2026
+## [0.11.25b3] - 25/11/2026
 
-### 🎨 Nova Interface Gráfica Studio (Dark Mode)
-- **Design System Moderno:** Redesenho completo da interface inspirado em ferramentas profissionais como **OBS Studio**, **Discord** e **Veadotube**.
-- **Paleta Dark Mode:** Cores escuras de alto contraste (`#121216` fundo principal, `#1C1C22` cards e painéis agrupados com bordas sutis `#2A2A32`, `#26262E` para botões neutros e inputs).
-- **Cor de Destaque Unificada:** Uso de cores de destaque vibrantes (`#6366F1` / `#10B981`) restritas a ações primárias (botão "INICIAR", switches ativos e medidor de áudio).
-- **Layout em 2 Colunas:**
-  - **Coluna Esquerda:** Visualização ao vivo do personagem montado reagindo ao microfone em tempo real, badge de status dinâmico (`● Silêncio` / `● Falando`), botão de destaque em largura total **"▶ INICIAR"** e toggle de Câmera Virtual.
-  - **Coluna Direita:** Seções agrupadas em cards com bordas arredondadas de 12px (Camadas/Sprites, Áudio e Ajustes de Renderização).
-- **Cards de Sprites Otimizados:** Cada camada (Base, Olhos Abertos, Olhos Fechados, Boca Aberta) agora possui miniatura (thumbnail 32x32px), rótulo e nome de arquivo limpo com botão compacto de seleção.
-- **Painel de Áudio Refatorado:** Dropdown de microfones com botão de atualização dinâmica (`↻`), medidor de volume sonoro com gradiente visual suave integrado ao controle de sensibilidade.
-- **Ajustes de Renderização Modernos:**
-  - Substituição de botões ON/OFF por **Toggle Switches** modernos (Transparente, Sem Bordas, Contorno Sólido e Animações).
-  - Indicador visual da cor de fundo (swatch) atualizado dinamicamente.
-  - **Controle Segmentado (Segmented Control)** para seleção rápida de FPS: `[ 30 | 60 | 120 ]`.
-- **Nova Identidade Visual:** Novo logotipo 512x512 em alta definição salvo em `static/PyTuber.png`, com estética de avatar VTuber com headset e iluminação neon.
+### ✨ Novas Funcionalidades
+- **Janela Modal "Sobre o Pytuber Studio":**
+  - Adicionado botão e modal interativo moderno em Dark Mode exibindo o logotipo oficial em alta resolução (`PyTuber.png`), versão ativa, data da release e créditos.
+  - Exibição detalhada do ambiente de execução: versão do interpretador Python e arquitetura (`Python 3.14.10 64-bit`) e versão do sistema operacional Windows (`Windows 11 Build 22631+`).
+  - Diagnóstico completo de bibliotecas instaladas com suas respectivas versões: `pygame-ce`, `numpy`, `sounddevice` e status da `pyvirtualcam`.
+  - Botão integrado "Buscar Atualizações" diretamente dentro da janela de Sobre.
+- **Botão e Sistema de Verificação Manual de Atualizações:**
+  - Novo botão "Atualizações" no cabeçalho superior com ícone vetorial de sincronização (`bi-arrow-repeat`) para checagem instantânea de novidades.
+  - Badge dinâmico de status no topo (`↻ Verificando...`, `⬆ Nova Versão`, `✓ Atualizado` ou `Baixando...`).
+  - Feedback visual imediato via notificações tipo *toast* informando se o sistema já está na versão mais recente ou se há nova versão disponível.
+- **Ícones Vetoriais Estilo Bootstrap Icons nos Botões:**
+  - Substituição de glifos de texto unicode por ícones vetoriais desenhados nativamente com anti-aliasing nos botões do cabeçalho e modais:
+    - Botão "Atualizações": Ícone de recarga/sincronização (`bi-arrow-repeat`).
+    - Botão "Sobre": Ícone de informação circular (`bi-info-circle`).
+    - Botão "Carregar": Ícone de pasta aberta (`bi-folder2-open`).
+    - Botão "Salvar": Ícone de disquete/salvamento (`bi-floppy`).
+    - Botão Fechar `[✕]`: Ícone vetorial anti-aliased em cruz diagonal nos modais de Atualização e Sobre.
 
----
-
-### 🎯 Sistema de Ponto de Ancoragem (Anchor Point)
-- **Retícula de Ancoragem Central:** Adicionado ponto de âncora visual no centro do personagem base (`char`).
-- **Alinhamento em Tempo Real:** Linhas guias inteligentes desenhadas em tempo real conectando a âncora aos olhos, boca e acessórios.
-- **Coordenadas Relativas Delta:** Exibição contínua na tela dos valores de deslocamento `Δ (X, Y)` em pixels, facilitando o alinhamento simétrico e a calibração de peças.
-- **Padronização:** A mesma lógica de ancoragem foi implementada tanto no modo de **Edição de Posições** quanto no **Guarda-Roupa**.
-
----
-
-### 👗 Guarda-Roupa & Acessórios (Wardrobe)
-- **Ajuste de Escala (Tamanho) dos Acessórios:**
-  - Slider interativo com arraste suave na barra de controles do preview.
-  - Botões de incremento/decremento fino `[-]` e `[+]` e atalho de restauração `1.0x`.
-  - Controle de escala contínuo via rotação da roda do mouse (*Scroll*) sobre o acessório.
-  - Campo numérico de escala direta na janela de propriedades do item.
-- **Janela de Configurações do Item Redesenhada:**
-  - Correção das áreas de clique e hitboxes dos botões de ação.
-  - Novos ícones minimalistas estilo **Bootstrap Icons**: lápis (`bi-pencil-fill`) para edição e lixeira (`bi-trash-fill`) para exclusão.
-- **Trava de Segurança (Lock):** Opção para travar peças no lugar, evitando movimentação acidental enquanto outros acessórios são posicionados.
-- **Camadas em 1 Clique:** Alternância instantânea de profundidade entre **Frente**, **Meio** e **Trás**.
-- **Categorização em Acordeão:** Suporte a Chapéus, Acessórios, Camisas, Casacos, Calças, Maquiagem, Objetos de Cena e Cor dos Olhos.
-
----
-
-### 📹 Câmera Virtual & Streaming
-- **Toggle de Câmera Virtual com Consentimento:** Ao ativar a chave de câmera virtual, o aplicativo solicita autorização do usuário antes de carregar ou instalar a dependência `pyvirtualcam`.
-- **Compatibilidade com Python 3.14.10:** Ajuste do ecossistema e bibliotecas para rodar nativamente em versões modernas do Python com suporte a `pygame-ce 2.5.8+` e wheels oficiais Windows x64.
-- **Modo OBS Studio:** Otimização do modo Transparente / Sem Bordas para Captura de Jogo (*Game Capture*) com suporte nativo a canal Alpha sem necessidade de chroma key verde artificial.
-
----
-
-### 🔄 Sistema de Verificação e Atualização Automática (Auto-Updater)
-- **Módulo Centralizado (`updater.py`):**
-  - Definição da constante global `APP_VERSION` e `RELEASE_DATE`.
-  - Consulta assíncrona à API de Releases do GitHub (`https://api.github.com/repos/ademirj93/pytuber/releases`) em thread separada na inicialização do app.
-  - Suporte completo a tags personalizadas (como `0-11-25`, `0-11-25-hotfix`, `V0.11.25b2`), identificando automaticamente versões com sufixos alfa, beta, rc e hotfix.
-  - Busca inteligente de assets instaladores (`Pytuber_Setup_*.exe`) mesmo quando publicados em releases complementares.
-  - Tratamento tolerante a falhas (conexão offline, timeout ou rate limit são ignorados silenciosamente sem travar o app).
-- **Interface e Controles no Header:**
-  - **Botão "↻ Atualizações":** Permite ao usuário disparar a checagem manual a qualquer momento, recebendo notificações visuais de progresso e resultado.
-  - **Botão e Modal "ℹ Sobre":** Janela completa com o logotipo do Pytuber Studio, versão da aplicação, data de lançamento, versão detalhada do interpretador Python (com arquitetura de 64-bit), versão e build do sistema operacional Windows, e versões de todas as bibliotecas de engine (`pygame-ce`, `numpy`, `sounddevice`, `pyvirtualcam`).
-  - Badge dinâmico no topo informando o estado da verificação (`↻ Verificando...`, `⬆ Nova Versão`, `✓ Atualizado` ou `Baixando...`).
-- **Interface de Atualização Integrada:**
-  - Modal dark mode com cabeçalho de aviso, número da nova versão e caixa de rolagem com o *changelog* oficial da release.
-  - Botão de download com barra de progresso animada em tempo real.
-  - Download direto do instalador `.exe` para a pasta temporária do Windows (`%TEMP%`).
-  - Execução automática do instalador via `ctypes.windll.shell32.ShellExecuteW(..., 'runas', ...)` e fechamento limpo do Pytuber em execução para permitir sobrescrita de arquivos.
-- **Compatibilidade com Executável Compilado:**
-  - Implementação da função `resource_path(relative_path)` com suporte a `sys._MEIPASS` para carregar ícones e assets tanto no ambiente de desenvolvimento quanto no binário compilado.
-
----
-
-### 📦 Pipeline de Compilação & Empacotamento
-- **Script de Compilação Automatizado (`build.py` / `build.bat`):**
-  - Limpeza automática de diretórios de build anteriores (`build/`, `dist/`).
-  - Resolução do problema de isolamento de bibliotecas (`ModuleNotFoundError: No module named 'pygame'`): vinculação explícita da pasta de pacotes do ambiente virtual (`.venv\Lib\site-packages`) via `--paths` e `--collect-all`.
-  - Configuração do PyInstaller em modo `--onedir` e `--windowed` (sem tela preta de prompt do DOS), com ícone oficial `static/icon.ico`.
-  - Integração direta em 1 comando com o compilador do Inno Setup 7 (`ISCC.exe`).
-- **Script do Instalador Profissional (`setup.iss`):**
-  - GUID único e fixo (`AppId={{8B1D4F37-9A63-4C3D-81F9-2A5817E294B1}}`), garantindo que atualizações futuras sobrescrevam a versão anterior sem duplicar entradas no Painel de Controle.
-  - Compressão ultra eficiente LZMA2 (`Compression=lzma2/ultra64`).
-  - Suporte a múltiplos idiomas (Português Brasileiro e Inglês).
-  - Criação de atalhos na Área de Trabalho e Menu Iniciar, com desinstalador limpo.
-  - Opção de inicialização automática ao término da instalação.
-  - Padrão de saída: `Pytuber_Setup_v{#MyAppVersion}.exe`.
-
----
-
-### 🛡️ Execução Como Administrador & Armazenamento no Disco C
-- **Elevação Automática UAC:** Implementação da função `ensure_admin()` em `main.py` utilizando a API nativa do Windows (`ctypes.windll.shell32.IsUserAnAdmin()` e `ShellExecuteW` com verbo `'runas'`). Se o script não for executado como Administrador, o prompt UAC é disparado automaticamente.
-- **Preservação de Diretório de Trabalho:** Ao elevar o processo, o diretório base da aplicação é mantido, prevenindo que o Windows mude o diretório padrão para `C:\Windows\System32`.
-- **Permissão Total no Disco C:** Garante que a criação de pastas e gravação de arquivos de assets e configurações em diretórios protegidos (como `C:\Program Files\Pytuber\assets` ou na raiz do disco C:) ocorram sem erros de permissão (`PermissionError: [Errno 13]`).
-- **Manifesto Embutido no PyInstaller:** Adicionada a flag `--uac-admin` no script [build.py](file:///c:/Users/Ademir/Projetos/pytuber/build.py), embutindo o manifesto `requireAdministrator` no cabeçalho do executável compilado `Pytuber.exe`.
-- **Instalador com Permissões de Administrador:** Atualizado [setup.iss](file:///c:/Users/Ademir/Projetos/pytuber/setup.iss) com `PrivilegesRequired=admin` e permissões explícitas `users-full` nas pastas `{app}\assets` e `{app}\static`.
-- **Launcher de Execução Direta:** Adicionado o script [run.bat](file:///c:/Users/Ademir/Projetos/pytuber/run.bat) para inicialização rápida com detecção automática do ambiente virtual.
-
----
+### 🛡️ Permissões de Administrador & Armazenamento no Disco C
+- **Auto-Elevação UAC no Windows:** Implementada rotina `ensure_admin()` em `main.py` com `ctypes.windll.shell32.ShellExecuteW(..., 'runas', ...)`. Se o aplicativo for iniciado sem privilégios administrativos, o prompt de elevação UAC do Windows é disparado automaticamente.
+- **Preservação de Diretório de Trabalho (`os.chdir`):** Prevenção contra o comportamento padrão do Windows de alterar o diretório de processos elevados para `C:\Windows\System32`, garantindo que assets e configurações sejam salvos na pasta correta no disco `C:`.
+- **Manifesto de Administrador Embutido:** Adicionada a flag `--uac-admin` no script de compilação [build.py](build.py), embutindo a diretiva `requireAdministrator` no executável gerado `Pytuber.exe`.
+- **Permissões Totais no Instalador:** Atualizado [setup.iss](setup.iss) com `PrivilegesRequired=admin` e permissões `users-full` nas pastas `{app}\assets` e `{app}\static`.
+- **Launcher `run.bat`:** Criado script de execução rápida na raiz do projeto com detecção e ativação automática do ambiente virtual `.venv`.
 
 ### 🐛 Correções de Bugs (Bug Fixes)
-- **Carregamento de Ícone no Pygame:** Corrigido o erro `Unsupported ICO bitmap format` alternando o ícone de janela para o PNG oficial em alta definição `PyTuber.png` com escala suave de 64x64, mantendo `icon.ico` para os atalhos e executável do Windows.
-- **Normalização de Tags de Versão:** Corrigida a identificação de versão em tags contendo `hotfix` ou sufixos `b2`, alinhando a consulta diretamente à ordenação cronológica de publicação do GitHub e prevenindo falsos alertas de "Nova versão disponível" quando a versão em execução já é a mais recente.
-- **Ícones Vetoriais nos Botões:** Substituição de glifos unicode nos botões de cabeçalho e modais por ícones vetoriais nítidos estilo Bootstrap Icons (`bi-arrow-repeat`, `bi-info-circle`, `bi-folder2-open`, `bi-floppy` e `bi-x-lg`).
-- **Menu de Edição de Posições:** Corrigido o botão "Salvar e Voltar", que não persistia as alterações ou travava a navegação de retorno ao menu principal.
-- **Hitboxes dos Botões:** Ajustada a área de colisão do mouse em botões de ação e ícones de edição/exclusão no guarda-roupa.
-- **Gerenciamento de Recursos:** Garantido que ícones e arquivos estáticos sejam localizados corretamente em qualquer diretório de trabalho.
+- **Carregamento de Ícone no Pygame:** Corrigido o erro `Erro ao carregar o ícone: Unsupported ICO bitmap format` no SDL/Pygame ao definir o ícone da janela; agora o carregamento utiliza o arquivo PNG oficial [PyTuber.png](static/PyTuber.png) com escala suave de 64x64 e canal alfa nativo.
+- **Correção da Identificação de Tags e Falsos Positivos de Atualização:**
+  - Corrigido o comparador de versão em [updater.py](updater.py) que causava falsos alertas de "Nova versão disponível" para quem já estava na versão mais recente (`0.11.25b2`), devido ao sufixo de controle interno `hotfix` e reordenação indevida da lista de releases.
+  - Implementada a função `extract_release_version` para extrair a versão canônica priorizando o nome da release quando explícito (ex: `V0.11.25b3`), com verificação de identidade em `is_newer_version`.
+  - A checagem agora respeita estritamente a ordem cronológica real de publicação do GitHub (`releases[0]`).
+- **Busca Abrangente de Instaladores:** O atualizador agora localiza assets de instaladores `.exe` vinculados a releases irmãs quando a release mais recente no GitHub for criada como tag de anúncio sem anexos diretos.
+
+---
+
+## [0.11.25b2] - 25/11/2026
+- Ajustes de estabilidade no motor de streaming e compatibilidade com Python 3.14.10.
+- Implementação inicial do módulo de verificação assíncrona com GitHub Releases.
+- Criação do pipeline de compilação com Inno Setup 7 e PyInstaller `--onedir`.
+
+---
+
+## [0.11.25] - 25/11/2026
+- Redesenho completo da interface para o visual Studio Dark Mode (`#121216`, `#1C1C22`, `#26262E`, `#6366F1`).
+- Layout em 2 colunas com preview reativo ao microfone em tempo real.
+- Sistema de ponto de ancoragem central (*Anchor Point*) com coordenadas relativas `Δ (X, Y)`.
+- Guarda-roupa modular com ajuste de escala contínuo de acessórios e camadas (Frente/Meio/Trás).
+- Integração nativa para OBS Studio com transparência Alpha via Captura de Jogo e suporte à Câmera Virtual.
+- Correção do botão "Salvar e Voltar" no modo de posições.
 
 ---
 
 ## [0.8.0] - Versão Anterior
 - Implementação inicial do motor 2D em Pygame.
-- Reconhecimento básico de entrada de áudio via microfone.
-- Alternância de sprites de boca aberta/fechada e olhos abertos/fechados.
-- Suporte inicial a acessórios básicos.
+- Reconhecimento básico de áudio por limiar de volume e alternância de sprites.

@@ -12,7 +12,7 @@
 [![Python Version](https://img.shields.io/badge/python-3.14%20%7C%203.13%20%7C%203.12-blue.svg?style=flat-square&logo=python)](https://www.python.org/)
 [![Pygame-CE](https://img.shields.io/badge/engine-pygame--ce%202.5.8+-orange.svg?style=flat-square)](https://pyga.me/)
 [![Platform](https://img.shields.io/badge/platform-Windows%2010%20%7C%2011-0078D6.svg?style=flat-square&logo=windows)](https://github.com/ademirj93/pytuber/releases)
-[![Release](https://img.shields.io/badge/release-v0.9.0-6366F1.svg?style=flat-square)](https://github.com/ademirj93/pytuber/releases)
+[![Release](https://img.shields.io/badge/release-v0.11.25b3-6366F1.svg?style=flat-square)](https://github.com/ademirj93/pytuber/releases)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg?style=flat-square)](/LICENSE)
 
 </div>

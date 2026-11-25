@@ -5,7 +5,7 @@
 ; ==============================================================================
 
 #ifndef MyAppVersion
-  #define MyAppVersion "0.11.25b2"
+  #define MyAppVersion "0.11.25b3"
 #endif
 
 #define MyAppName "Pytuber"
