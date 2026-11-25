@@ -33,6 +33,78 @@ from updater import (
     UpdateStatus,
 )
 
+# --- Gerenciamento de Privilégios de Administrador e Diretório Base ---
+def is_admin():
+    """Verifica se o processo atual possui privilégios de Administrador no Windows."""
+    if sys.platform != 'win32':
+        return True
+    try:
+        return ctypes.windll.shell32.IsUserAnAdmin() != 0
+    except Exception:
+        return False
+
+def ensure_admin():
+    """
+    Garante que o script/aplicativo seja executado como Administrador.
+    Se não possuir elevação, solicita elevação UAC ('runas') ao Windows
+    e reinicia o processo com os mesmos argumentos preservando o diretório de trabalho.
+    """
+    if sys.platform != 'win32':
+        return True
+
+    if not is_admin():
+        try:
+            # Identifica se é executável congelado (PyInstaller) ou script Python
+            if getattr(sys, 'frozen', False):
+                app_dir = os.path.dirname(os.path.abspath(sys.executable))
+                executable = sys.executable
+                params = " ".join([f'"{arg}"' for arg in sys.argv[1:]])
+            else:
+                app_dir = os.path.dirname(os.path.abspath(__file__))
+                executable = sys.executable
+                script_path = os.path.abspath(sys.argv[0])
+                params = f'"{script_path}" ' + " ".join([f'"{arg}"' for arg in sys.argv[1:]])
+
+            # Dispara elevação via UAC ShellExecuteW com o verbo 'runas'
+            # Passamos app_dir como lpDirectory para NÃO mudar o diretório de trabalho para C:\Windows\System32
+            ret = ctypes.windll.shell32.ShellExecuteW(
+                None,
+                "runas",
+                executable,
+                params,
+                app_dir,
+                1  # SW_SHOWNORMAL
+            )
+            if ret > 32:
+                # Processo com privilégios de administrador iniciado com sucesso; encerra processo atual
+                sys.exit(0)
+            else:
+                # O usuário cancelou a solicitação de elevação UAC
+                try:
+                    ctypes.windll.user32.MessageBoxW(
+                        None,
+                        "O Pytuber necessita de permissões de Administrador para criar pastas e armazenar os assets no disco C.\n\nPor favor, autorize a execução como Administrador.",
+                        "Pytuber - Permissão de Administrador Necessária",
+                        0x00000030 | 0x00000000  # MB_ICONWARNING | MB_OK
+                    )
+                except Exception:
+                    pass
+                sys.exit(1)
+        except Exception as e:
+            print(f"[AVISO] Falha ao solicitar elevação de administrador: {e}")
+            return False
+    return True
+
+# Garante que o diretório de trabalho seja sempre o diretório base da aplicação
+if getattr(sys, 'frozen', False):
+    APP_DIR = os.path.dirname(os.path.abspath(sys.executable))
+else:
+    APP_DIR = os.path.dirname(os.path.abspath(__file__))
+try:
+    os.chdir(APP_DIR)
+except Exception as e:
+    print(f"Erro ao definir diretório base: {e}")
+
 # --- Configurações Iniciais ---
 SCREEN_WIDTH = 1280
 SCREEN_HEIGHT = 720
@@ -2319,4 +2391,5 @@ def main():
     pygame.quit()
 
 if __name__ == '__main__':
+    ensure_admin()
     main()

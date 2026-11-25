@@ -6,6 +6,7 @@ download assíncrono do instalador e execução limpa com encerramento do app.
 
 import os
 import sys
+import ctypes
 import json
 import re
 import time
@@ -16,7 +17,7 @@ import urllib.request
 import urllib.error
 
 # --- Versão e Metadados Centrais ---
-APP_VERSION = "0.11.25"
+APP_VERSION = "0.11.25b2"
 GITHUB_OWNER = "ademirj93"
 GITHUB_REPO = "pytuber"
 GITHUB_API_URL = f"https://api.github.com/repos/{GITHUB_OWNER}/{GITHUB_REPO}/releases/latest"
@@ -277,12 +278,25 @@ def launch_installer_and_exit(installer_path=None):
     GLOBAL_UPDATE_INFO.set_status(UpdateStatus.INSTALLING)
 
     try:
-        # Inicia o instalador desacoplado do processo pai
-        subprocess.Popen(
-            [path_to_run],
-            shell=False,
-            creationflags=subprocess.DETACHED_PROCESS if sys.platform == "win32" else 0
-        )
+        # Inicia o instalador com privilégios de Administrador
+        if sys.platform == "win32":
+            ret = ctypes.windll.shell32.ShellExecuteW(
+                None,
+                "runas",
+                path_to_run,
+                None,
+                None,
+                1  # SW_SHOWNORMAL
+            )
+            if ret <= 32:
+                # Fallback caso o usuário use outro mecanismo ou recuse
+                subprocess.Popen(
+                    [path_to_run],
+                    shell=False,
+                    creationflags=subprocess.DETACHED_PROCESS
+                )
+        else:
+            subprocess.Popen([path_to_run], shell=False)
     except Exception as e:
         print(f"Erro ao disparar instalador: {e}")
         return False

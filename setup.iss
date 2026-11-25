@@ -5,7 +5,7 @@
 ; ==============================================================================
 
 #ifndef MyAppVersion
-  #define MyAppVersion "0.11.25"
+  #define MyAppVersion "0.11.25b2"
 #endif
 
 #define MyAppName "Pytuber"
@@ -41,8 +41,8 @@ Compression=lzma2/ultra64
 SolidCompression=yes
 WizardStyle=modern
 
-; Não requer elevação de administrador obrigatória para facilitar auto-atualizações limpas
-PrivilegesRequired=lowest
+; Requer privilégios de administrador para instalar e salvar assets no disco C
+PrivilegesRequired=admin
 PrivilegesRequiredOverridesAllowed=dialog
 
 ; Fecha o aplicativo em execução automaticamente antes de substituir arquivos
@@ -56,6 +56,10 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
+
+[Dirs]
+Name: "{app}\assets"; Permissions: users-full
+Name: "{app}\static"; Permissions: users-full
 
 [Files]
 ; Copia todos os binários e recursos gerados pelo PyInstaller (--onedir)

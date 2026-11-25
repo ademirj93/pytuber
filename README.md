@@ -34,6 +34,7 @@
 - [Atalhos do Teclado e Navegação](#-atalhos-do-teclado-e-navegação)
 - [Compilação e Criação do Instalador](#-compilação-e-criação-do-instalador)
 - [Atualizador Automático (Auto-Updater)](#-atualizador-automático-auto-updater)
+- [Registro de Alterações (Changelog)](CHANGELOG.md)
 - [Autores e Licença](#-autores-e-licença)
 
 ---

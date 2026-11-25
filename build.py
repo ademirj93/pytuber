@@ -114,6 +114,7 @@ def run_pyinstaller():
         f"--icon={icon_src}",
         f"--add-data={static_src};static",
         f"--add-data={assets_src};assets",
+        "--uac-admin",
         "--clean",
     ]
 
