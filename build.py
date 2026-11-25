@@ -3,6 +3,8 @@
 """
 build.py - Script de Compilação e Empacotamento Automatizado do Pytuber
 Executa a limpeza, compilação com PyInstaller (--onedir) e criação do instalador Inno Setup.
+Garante que o ambiente virtual (.venv) e todas as bibliotecas (pygame, numpy, sounddevice, pyvirtualcam)
+sejam 100% incorporados ao executável final.
 """
 
 import os
@@ -39,32 +41,72 @@ def clean_previous_builds():
                 print(f"   [Aviso] Não foi possível remover {d}: {e}")
     print("-> Limpeza concluída!")
 
-def check_pyinstaller():
-    """Verifica se o PyInstaller está disponível."""
+def resolve_pyinstaller_command():
+    """
+    Localiza o PyInstaller e garante a resolução das bibliotecas do .venv.
+    Retorna uma tupla (cmd_base, venv_site_packages, env_dict).
+    """
+    venv_python = os.path.join(BASE_DIR, ".venv", "Scripts", "python.exe")
+    venv_site_packages = os.path.join(BASE_DIR, ".venv", "Lib", "site-packages")
+    env = os.environ.copy()
+
+    # Se existe .venv, inclui no PYTHONPATH para que o PyInstaller encontre tudo
+    if os.path.exists(venv_site_packages):
+        current_pp = env.get("PYTHONPATH", "")
+        env["PYTHONPATH"] = f"{venv_site_packages};{current_pp}" if current_pp else venv_site_packages
+
+    # 1. Verifica se PyInstaller está instalado dentro do .venv
+    if os.path.exists(venv_python):
+        try:
+            res = subprocess.run([venv_python, "-m", "PyInstaller", "--version"], capture_output=True, text=True)
+            if res.returncode == 0:
+                print(f"-> Usando PyInstaller da .venv ({res.stdout.strip()}): {venv_python}")
+                return [venv_python, "-m", "PyInstaller"], venv_site_packages, env
+        except Exception:
+            pass
+
+    # 2. Verifica se PyInstaller está no ambiente do python atual
     try:
         res = subprocess.run([sys.executable, "-m", "PyInstaller", "--version"], capture_output=True, text=True)
         if res.returncode == 0:
-            return True
+            print(f"-> Usando PyInstaller de {sys.executable} ({res.stdout.strip()})")
+            return [sys.executable, "-m", "PyInstaller"], venv_site_packages, env
     except Exception:
         pass
-    return shutil.which("pyinstaller") is not None
+
+    # 3. Tenta chamar o comando py -3.14 -m PyInstaller
+    try:
+        res = subprocess.run(["py", "-3.14", "-m", "PyInstaller", "--version"], capture_output=True, text=True)
+        if res.returncode == 0:
+            print(f"-> Usando PyInstaller via launcher py -3.14 ({res.stdout.strip()})")
+            return ["py", "-3.14", "-m", "PyInstaller"], venv_site_packages, env
+    except Exception:
+        pass
+
+    # 4. Fallback para pyinstaller no PATH
+    which_pyi = shutil.which("pyinstaller")
+    if which_pyi:
+        print(f"-> Usando PyInstaller do PATH: {which_pyi}")
+        return [which_pyi], venv_site_packages, env
+
+    return None, venv_site_packages, env
 
 def run_pyinstaller():
-    """Compila o aplicativo com PyInstaller no modo --onedir."""
+    """Compila o aplicativo com PyInstaller no modo --onedir incorporando o .venv."""
     print_header(f"2. COMPILANDO PYTUBER v{APP_VERSION} COM PYINSTALLER")
     
-    if not check_pyinstaller():
-        print("[ERRO] PyInstaller não encontrado no ambiente Python atual!")
-        print("Instale o PyInstaller com: pip install pyinstaller")
+    cmd_base, venv_site_packages, env = resolve_pyinstaller_command()
+    if not cmd_base:
+        print("[ERRO] PyInstaller não encontrado!")
+        print("Instale o PyInstaller no ambiente com:")
+        print("  .\\.venv\\Scripts\\python.exe -m pip install pyinstaller")
         return False
 
-    # Configuração dos dados adicionais (Windows usa ponto e vírgula ';')
     static_src = os.path.join(BASE_DIR, "static")
     assets_src = os.path.join(BASE_DIR, "assets")
     icon_src = os.path.join(static_src, "icon.ico")
 
-    pyinstaller_cmd = [
-        sys.executable, "-m", "PyInstaller",
+    pyinstaller_cmd = list(cmd_base) + [
         "--noconfirm",
         "--onedir",
         "--windowed",
@@ -73,13 +115,26 @@ def run_pyinstaller():
         f"--add-data={static_src};static",
         f"--add-data={assets_src};assets",
         "--clean",
-        os.path.join(BASE_DIR, "main.py")
     ]
 
-    print("Comando de execução:")
+    # Incorpora explicitamente a pasta site-packages do .venv para garantir
+    # que pygame, numpy, sounddevice e pyvirtualcam sejam empacotados
+    if os.path.exists(venv_site_packages):
+        print(f"-> Vinculando bibliotecas do ambiente virtual: {venv_site_packages}")
+        pyinstaller_cmd.extend([
+            f"--paths={venv_site_packages}",
+            "--collect-all=pygame",
+            "--collect-all=pyvirtualcam",
+            "--collect-all=sounddevice",
+            "--collect-all=numpy"
+        ])
+
+    pyinstaller_cmd.append(os.path.join(BASE_DIR, "main.py"))
+
+    print("\nComando de execução:")
     print(" ".join(pyinstaller_cmd) + "\n")
     
-    result = subprocess.run(pyinstaller_cmd, cwd=BASE_DIR)
+    result = subprocess.run(pyinstaller_cmd, cwd=BASE_DIR, env=env)
     if result.returncode != 0:
         print(f"\n[ERRO] Falha na compilação do PyInstaller (código {result.returncode})")
         return False
@@ -133,7 +188,8 @@ def build_installer():
     print("  SUCESSO! INSTALADOR GERADO COM ÊXITO")
     print("=" * 70)
     print(f"-> Arquivo do Instalador: {installer_output}")
-    print(f"-> Tamanho: {os.path.getsize(installer_output) / (1024*1024):.2f} MB" if os.path.exists(installer_output) else "")
+    if os.path.exists(installer_output):
+        print(f"-> Tamanho: {os.path.getsize(installer_output) / (1024*1024):.2f} MB")
     print(f"-> Pronto para anexar na release do GitHub como 'Pytuber_Setup_v{APP_VERSION}.exe'!")
     return True
 
