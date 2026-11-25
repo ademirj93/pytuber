@@ -58,15 +58,20 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 
 ### 🔄 Sistema de Verificação e Atualização Automática (Auto-Updater)
 - **Módulo Centralizado (`updater.py`):**
-  - Definição da constante global `APP_VERSION = "0.9.0"`.
-  - Consulta assíncrona à API de Releases do GitHub (`https://api.github.com/repos/ademirj93/pytuber/releases/latest`) em thread separada na inicialização do app.
-  - Comparador semântico de versões integrado (sem dependência de bibliotecas externas pesadas).
+  - Definição da constante global `APP_VERSION` e `RELEASE_DATE`.
+  - Consulta assíncrona à API de Releases do GitHub (`https://api.github.com/repos/ademirj93/pytuber/releases`) em thread separada na inicialização do app.
+  - Suporte completo a tags personalizadas (como `0-11-25`, `0-11-25-hotfix`, `V0.11.25b2`), identificando automaticamente versões com sufixos alfa, beta, rc e hotfix.
+  - Busca inteligente de assets instaladores (`Pytuber_Setup_*.exe`) mesmo quando publicados em releases complementares.
   - Tratamento tolerante a falhas (conexão offline, timeout ou rate limit são ignorados silenciosamente sem travar o app).
+- **Interface e Controles no Header:**
+  - **Botão "↻ Atualizações":** Permite ao usuário disparar a checagem manual a qualquer momento, recebendo notificações visuais de progresso e resultado.
+  - **Botão e Modal "ℹ Sobre":** Janela completa com o logotipo do Pytuber Studio, versão da aplicação, data de lançamento, versão detalhada do interpretador Python (com arquitetura de 64-bit), versão e build do sistema operacional Windows, e versões de todas as bibliotecas de engine (`pygame-ce`, `numpy`, `sounddevice`, `pyvirtualcam`).
+  - Badge dinâmico no topo informando o estado da verificação (`↻ Verificando...`, `⬆ Nova Versão`, `✓ Atualizado` ou `Baixando...`).
 - **Interface de Atualização Integrada:**
   - Modal dark mode com cabeçalho de aviso, número da nova versão e caixa de rolagem com o *changelog* oficial da release.
   - Botão de download com barra de progresso animada em tempo real.
   - Download direto do instalador `.exe` para a pasta temporária do Windows (`%TEMP%`).
-  - Execução automática do instalador via `subprocess.Popen` e fechamento limpo do Pytuber em execução para permitir sobrescrita de arquivos.
+  - Execução automática do instalador via `ctypes.windll.shell32.ShellExecuteW(..., 'runas', ...)` e fechamento limpo do Pytuber em execução para permitir sobrescrita de arquivos.
 - **Compatibilidade com Executável Compilado:**
   - Implementação da função `resource_path(relative_path)` com suporte a `sys._MEIPASS` para carregar ícones e assets tanto no ambiente de desenvolvimento quanto no binário compilado.
 
@@ -99,6 +104,9 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 ---
 
 ### 🐛 Correções de Bugs (Bug Fixes)
+- **Carregamento de Ícone no Pygame:** Corrigido o erro `Unsupported ICO bitmap format` alternando o ícone de janela para o PNG oficial em alta definição `PyTuber.png` com escala suave de 64x64, mantendo `icon.ico` para os atalhos e executável do Windows.
+- **Normalização de Tags de Versão:** Corrigida a identificação de versão em tags contendo `hotfix` ou sufixos `b2`, alinhando a consulta diretamente à ordenação cronológica de publicação do GitHub e prevenindo falsos alertas de "Nova versão disponível" quando a versão em execução já é a mais recente.
+- **Ícones Vetoriais nos Botões:** Substituição de glifos unicode nos botões de cabeçalho e modais por ícones vetoriais nítidos estilo Bootstrap Icons (`bi-arrow-repeat`, `bi-info-circle`, `bi-folder2-open`, `bi-floppy` e `bi-x-lg`).
 - **Menu de Edição de Posições:** Corrigido o botão "Salvar e Voltar", que não persistia as alterações ou travava a navegação de retorno ao menu principal.
 - **Hitboxes dos Botões:** Ajustada a área de colisão do mouse em botões de ação e ícones de edição/exclusão no guarda-roupa.
 - **Gerenciamento de Recursos:** Garantido que ícones e arquivos estáticos sejam localizados corretamente em qualquer diretório de trabalho.

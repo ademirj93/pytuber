@@ -16,6 +16,7 @@ import shutil
 import copy
 import threading
 import subprocess
+import platform
 
 try:
     import pyvirtualcam
@@ -25,6 +26,9 @@ except ImportError:
 
 from updater import (
     APP_VERSION,
+    RELEASE_DATE,
+    GITHUB_OWNER,
+    GITHUB_REPO,
     resource_path,
     check_for_updates_async,
     download_update_async,
@@ -210,6 +214,52 @@ def draw_icon_refresh(surface, center, radius, color):
     p2 = (cx + radius - arrow_size * 2, cy - 2)
     p3 = (cx + radius - arrow_size // 2, cy - arrow_size * 2)
     pygame.draw.polygon(surface, color, [p1, p2, p3])
+
+def draw_icon_info(surface, center, size=12, color=Theme.TEXT_PRIMARY):
+    """Desenha o ícone vetorial de informação (i) estilo Bootstrap Icons (bi-info-circle)."""
+    cx, cy = center
+    radius = size // 2
+    pygame.draw.circle(surface, color, (cx, cy), radius, 1)
+    pygame.draw.circle(surface, color, (cx, cy - radius + 3), 1)
+    pygame.draw.line(surface, color, (cx, cy - 1), (cx, cy + radius - 3), 2)
+
+def draw_icon_close(surface, center, size=10, color=Theme.TEXT_SECONDARY):
+    """Desenha um ícone vetorial de fechar (✕)."""
+    cx, cy = center
+    hs = size // 2
+    pygame.draw.line(surface, color, (cx - hs, cy - hs), (cx + hs, cy + hs), 2)
+    pygame.draw.line(surface, color, (cx - hs, cy + hs), (cx + hs, cy - hs), 2)
+
+def draw_icon_folder(surface, center, size=13, color=Theme.TEXT_PRIMARY):
+    """Desenha o ícone vetorial de pasta estilo Bootstrap Icons (bi-folder2-open)."""
+    cx, cy = center
+    surf = pygame.Surface((size, size), pygame.SRCALPHA)
+    pygame.draw.rect(surf, color, (1, 1, size // 2 - 1, 2), border_radius=1)
+    pygame.draw.rect(surf, color, (1, 3, size - 2, size - 4), width=1, border_radius=2)
+    front = [
+        (0, size - 1),
+        (3, 5),
+        (size - 1, 5),
+        (size - 3, size - 1)
+    ]
+    pygame.draw.polygon(surf, color, front)
+    surface.blit(surf, (cx - size // 2, cy - size // 2))
+
+def draw_icon_disk(surface, center, size=13, color=Theme.TEXT_PRIMARY):
+    """Desenha o ícone vetorial de disquete/salvar estilo Bootstrap Icons (bi-floppy)."""
+    cx, cy = center
+    surf = pygame.Surface((size, size), pygame.SRCALPHA)
+    points = [
+        (1, 1),
+        (size - 4, 1),
+        (size - 1, 4),
+        (size - 1, size - 1),
+        (1, size - 1)
+    ]
+    pygame.draw.polygon(surf, color, points)
+    pygame.draw.rect(surf, (20, 20, 26), (3, 1, size - 7, 3))
+    pygame.draw.rect(surf, (20, 20, 26), (3, size - 5, size - 6, 3), border_radius=1)
+    surface.blit(surf, (cx - size // 2, cy - size // 2))
 
 def draw_icon_lock(surface, center, is_locked, color):
     """Desenha um ícone vetorial de cadeado moderno."""
@@ -678,9 +728,16 @@ def main():
 
     # --- Configuração do Ícone da Janela ---
     try:
-        icon_path = resource_path('icon.ico')
+        icon_path = resource_path(os.path.join("static", "PyTuber.png"))
+        if not os.path.exists(icon_path):
+            icon_path = resource_path("PyTuber.png")
+        if not os.path.exists(icon_path):
+            icon_path = resource_path("icon.ico")
         if os.path.exists(icon_path):
-            pygame.display.set_icon(pygame.image.load(icon_path))
+            icon_surf = pygame.image.load(icon_path)
+            if icon_surf.get_width() > 64 or icon_surf.get_height() > 64:
+                icon_surf = pygame.transform.smoothscale(icon_surf, (64, 64))
+            pygame.display.set_icon(icon_surf)
     except Exception as e:
         print(f"Erro ao carregar o ícone: {e}")
 
@@ -858,8 +915,11 @@ def main():
     wardrobe_panel_width = 480
     vcam_install_status = {'in_progress': False, 'message': None}
     show_update_modal = False
+    show_about_modal = False
     update_modal_seen = False
     btn_update_pill = None
+    btn_check_updates = None
+    btn_about = None
     
     last_cycle_profile_pressed = False
     current_profile_index = -1
@@ -883,6 +943,18 @@ def main():
             show_update_modal = True
             update_modal_seen = True
 
+        # Feedback de notificação quando a verificação manual de atualização é concluída
+        if GLOBAL_UPDATE_INFO.is_manual_check and GLOBAL_UPDATE_INFO.status in [UpdateStatus.AVAILABLE, UpdateStatus.UP_TO_DATE, UpdateStatus.ERROR]:
+            if GLOBAL_UPDATE_INFO.status == UpdateStatus.AVAILABLE:
+                show_update_modal = True
+                notification_text = f"Nova versão encontrada: v{GLOBAL_UPDATE_INFO.latest_version}!"
+            elif GLOBAL_UPDATE_INFO.status == UpdateStatus.UP_TO_DATE:
+                notification_text = f"✓ Tudo certo! Você já está na versão mais recente (v{APP_VERSION})."
+            elif GLOBAL_UPDATE_INFO.status == UpdateStatus.ERROR:
+                notification_text = f"Falha na verificação: {GLOBAL_UPDATE_INFO.error_message[:42]}"
+            notification_time = time.time()
+            GLOBAL_UPDATE_INFO.is_manual_check = False
+
         # --- Lógica de Piscar e Animação ---
         if current_time - last_blink_time > next_blink_interval:
             is_blinking = True
@@ -904,8 +976,10 @@ def main():
         # --- Definição dos Retângulos da Interface (MENU) ---
         # Header (y: 12 - 56)
         header_rect = pygame.Rect(20, 12, SCREEN_WIDTH - 40, 44)
-        btn_load_profile = pygame.Rect(header_rect.right - 195, 16, 92, 34)
-        btn_save_profile = pygame.Rect(header_rect.right - 95, 16, 92, 34)
+        btn_save_profile = pygame.Rect(header_rect.right - 84, 16, 76, 34)
+        btn_load_profile = pygame.Rect(btn_save_profile.left - 96, 16, 88, 34)
+        btn_about = pygame.Rect(btn_load_profile.left - 82, 16, 74, 34)
+        btn_check_updates = pygame.Rect(btn_about.left - 134, 16, 126, 34)
 
         # Coluna Esquerda: Preview e Controles Principais (x: 20, largura: 430)
         col_left_x = 20
@@ -1025,12 +1099,52 @@ def main():
                             continue
                         continue
 
+                    # Interações do Modal Sobre (se visível)
+                    if show_about_modal:
+                        about_w, about_h = 580, 500
+                        about_rect = pygame.Rect((SCREEN_WIDTH - about_w) // 2, (SCREEN_HEIGHT - about_h) // 2, about_w, about_h)
+                        btn_about_close = pygame.Rect(about_rect.right - 36, about_rect.y + 14, 24, 24)
+                        btn_ab_check = pygame.Rect(about_rect.x + 24, about_rect.bottom - 54, 180, 36)
+                        btn_ab_dismiss = pygame.Rect(about_rect.right - 130, about_rect.bottom - 54, 106, 36)
+
+                        if btn_about_close.collidepoint(pos) or btn_ab_dismiss.collidepoint(pos):
+                            show_about_modal = False
+                            continue
+                        elif btn_ab_check.collidepoint(pos):
+                            check_for_updates_async(manual=True)
+                            notification_text = "Buscando atualizações no GitHub..."
+                            notification_time = time.time()
+                            continue
+                        elif not about_rect.collidepoint(pos):
+                            show_about_modal = False
+                            continue
+                        continue
+
+                    # Botão Verificar Atualizações no Header
+                    if btn_check_updates and btn_check_updates.collidepoint(pos):
+                        check_for_updates_async(manual=True)
+                        notification_text = "Buscando atualizações no GitHub..."
+                        notification_time = time.time()
+                        continue
+
+                    # Botão Sobre no Header
+                    if btn_about and btn_about.collidepoint(pos):
+                        show_about_modal = True
+                        continue
+
                     # Clique no Pill de Atualização no Header
                     if btn_update_pill and btn_update_pill.collidepoint(pos):
                         if GLOBAL_UPDATE_INFO.status == UpdateStatus.DOWNLOADED:
                             launch_installer_and_exit()
-                        else:
+                        elif GLOBAL_UPDATE_INFO.status == UpdateStatus.AVAILABLE:
                             show_update_modal = True
+                        elif GLOBAL_UPDATE_INFO.status == UpdateStatus.UP_TO_DATE:
+                            notification_text = f"✓ Pytuber Studio v{APP_VERSION} está atualizado!"
+                            notification_time = time.time()
+                        else:
+                            check_for_updates_async(manual=True)
+                            notification_text = "Verificando atualizações no GitHub..."
+                            notification_time = time.time()
                         continue
 
                     # Lógica do Dropdown quando aberto
@@ -1598,7 +1712,11 @@ def main():
                         notification_time = time.time()
 
                 elif event.key == pygame.K_ESCAPE:
-                    if current_state == "RUNNING":
+                    if show_about_modal:
+                        show_about_modal = False
+                    elif show_update_modal:
+                        show_update_modal = False
+                    elif current_state == "RUNNING":
                         current_state = "MENU"
                         screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
                         set_window_transparency(config['bg_color'], False)
@@ -1650,9 +1768,12 @@ def main():
 
             # Badge / Pill de Atualização no Header
             btn_update_pill = None
-            if GLOBAL_UPDATE_INFO.status == UpdateStatus.AVAILABLE:
+            if GLOBAL_UPDATE_INFO.status == UpdateStatus.CHECKING:
                 pill_x = tag_rect.right + 10
-                btn_update_pill = draw_badge(screen, pill_x, header_rect.y + 10, f"⬆ Atualização v{GLOBAL_UPDATE_INFO.latest_version}", (255, 255, 255), Theme.ACCENT_GREEN, radius=6)
+                btn_update_pill = draw_badge(screen, pill_x, header_rect.y + 10, "↻ Verificando...", Theme.TEXT_SECONDARY, Theme.BTN_NEUTRAL, border_color=Theme.BORDER, radius=6)
+            elif GLOBAL_UPDATE_INFO.status == UpdateStatus.AVAILABLE:
+                pill_x = tag_rect.right + 10
+                btn_update_pill = draw_badge(screen, pill_x, header_rect.y + 10, f"⬆ Nova Versão v{GLOBAL_UPDATE_INFO.latest_version}", (255, 255, 255), Theme.ACCENT_GREEN, radius=6)
                 if btn_update_pill.collidepoint(mouse_pos):
                     hover_clickable = True
             elif GLOBAL_UPDATE_INFO.status == UpdateStatus.DOWNLOADING:
@@ -1663,25 +1784,53 @@ def main():
                 btn_update_pill = draw_badge(screen, pill_x, header_rect.y + 10, "✓ Instalar Atualização", (255, 255, 255), Theme.ACCENT, radius=6)
                 if btn_update_pill.collidepoint(mouse_pos):
                     hover_clickable = True
+            elif GLOBAL_UPDATE_INFO.status == UpdateStatus.UP_TO_DATE:
+                pill_x = tag_rect.right + 10
+                btn_update_pill = draw_badge(screen, pill_x, header_rect.y + 10, f"✓ v{APP_VERSION} Atualizado", Theme.TEXT_MUTED, Theme.CARD_INNER, border_color=Theme.BORDER, radius=6)
+                if btn_update_pill.collidepoint(mouse_pos):
+                    hover_clickable = True
 
             # Informação do Perfil Ativo
             font_info = get_font(13)
             p_text = f"Perfil: {current_profile_name}"
             p_surf = font_info.render(p_text, True, Theme.TEXT_SECONDARY)
-            screen.blit(p_surf, (btn_load_profile.x - p_surf.get_width() - 16, header_rect.y + 14))
+            screen.blit(p_surf, (btn_check_updates.x - p_surf.get_width() - 14, header_rect.y + 14))
 
-            # Botões Salvar e Carregar Perfil
+            # Botões de Utilidades e Perfis no Header
+            h_check = btn_check_updates.collidepoint(mouse_pos)
+            h_about = btn_about.collidepoint(mouse_pos)
             h_load = btn_load_profile.collidepoint(mouse_pos)
             h_save = btn_save_profile.collidepoint(mouse_pos)
-            draw_card(screen, btn_load_profile, border_color=Theme.BORDER_LIGHT if h_load else Theme.BORDER, bg_color=Theme.BTN_HOVER if h_load else Theme.BTN_NEUTRAL, radius=6)
-            draw_card(screen, btn_save_profile, border_color=Theme.BORDER_LIGHT if h_save else Theme.BORDER, bg_color=Theme.BTN_HOVER if h_save else Theme.BTN_NEUTRAL, radius=6)
-            
-            t_load = font_info.render("Carregar", True, Theme.TEXT_PRIMARY)
-            t_save = font_info.render("Salvar", True, Theme.TEXT_PRIMARY)
-            screen.blit(t_load, t_load.get_rect(center=btn_load_profile.center))
-            screen.blit(t_save, t_save.get_rect(center=btn_save_profile.center))
 
-            if h_load or h_save: hover_clickable = True
+            # 1. Botão Verificar Atualizações (com ícone ↻)
+            col_chk = (255, 255, 255) if h_check else Theme.TEXT_PRIMARY
+            draw_card(screen, btn_check_updates, border_color=Theme.BORDER_LIGHT if h_check else Theme.BORDER, bg_color=Theme.BTN_HOVER if h_check else Theme.BTN_NEUTRAL, radius=6)
+            draw_icon_refresh(screen, (btn_check_updates.x + 16, btn_check_updates.centery), 6, col_chk)
+            t_check = font_info.render("Atualizações", True, col_chk)
+            screen.blit(t_check, (btn_check_updates.x + 28, btn_check_updates.centery - t_check.get_height() // 2))
+
+            # 2. Botão Sobre (com ícone ℹ)
+            col_ab = (255, 255, 255) if h_about else Theme.TEXT_PRIMARY
+            draw_card(screen, btn_about, border_color=Theme.BORDER_LIGHT if h_about else Theme.BORDER, bg_color=Theme.BTN_HOVER if h_about else Theme.BTN_NEUTRAL, radius=6)
+            draw_icon_info(screen, (btn_about.x + 16, btn_about.centery), 12, col_ab)
+            t_about = font_info.render("Sobre", True, col_ab)
+            screen.blit(t_about, (btn_about.x + 28, btn_about.centery - t_about.get_height() // 2))
+
+            # 3. Botões Carregar e Salvar Perfil (com ícones de Pasta e Disquete)
+            col_ld = (255, 255, 255) if h_load else Theme.TEXT_PRIMARY
+            draw_card(screen, btn_load_profile, border_color=Theme.BORDER_LIGHT if h_load else Theme.BORDER, bg_color=Theme.BTN_HOVER if h_load else Theme.BTN_NEUTRAL, radius=6)
+            draw_icon_folder(screen, (btn_load_profile.x + 16, btn_load_profile.centery), 13, col_ld)
+            t_load = font_info.render("Carregar", True, col_ld)
+            screen.blit(t_load, (btn_load_profile.x + 28, btn_load_profile.centery - t_load.get_height() // 2))
+
+            col_sv = (255, 255, 255) if h_save else Theme.TEXT_PRIMARY
+            draw_card(screen, btn_save_profile, border_color=Theme.BORDER_LIGHT if h_save else Theme.BORDER, bg_color=Theme.BTN_HOVER if h_save else Theme.BTN_NEUTRAL, radius=6)
+            draw_icon_disk(screen, (btn_save_profile.x + 16, btn_save_profile.centery), 13, col_sv)
+            t_save = font_info.render("Salvar", True, col_sv)
+            screen.blit(t_save, (btn_save_profile.x + 28, btn_save_profile.centery - t_save.get_height() // 2))
+
+            if h_check or h_about or h_load or h_save:
+                hover_clickable = True
 
             # 2. COLUNA ESQUERDA (Preview & Controles Principais)
             draw_card(screen, preview_card_rect, radius=12)
@@ -2005,7 +2154,7 @@ def main():
                 if h_close:
                     pygame.draw.rect(screen, Theme.BTN_HOVER, btn_modal_close, border_radius=4)
                     hover_clickable = True
-                screen.blit(get_font(12, bold=True).render("✕", True, Theme.TEXT_SECONDARY), (btn_modal_close.x + 6, btn_modal_close.y + 4))
+                draw_icon_close(screen, btn_modal_close.center, 10, Theme.TEXT_PRIMARY if h_close else Theme.TEXT_SECONDARY)
 
                 # Subtítulo
                 sub_txt = f"Versão atual: v{APP_VERSION}  •  Nova versão: v{GLOBAL_UPDATE_INFO.latest_version}"
@@ -2071,6 +2220,104 @@ def main():
                     t_err = get_font(12).render("Fechar", True, Theme.TEXT_PRIMARY)
                     screen.blit(t_err, t_err.get_rect(center=btn_close_err.center))
                     if h_err: hover_clickable = True
+
+            # 7. MODAL "SOBRE O PYTUBER STUDIO"
+            if show_about_modal and current_state == "MENU":
+                overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
+                overlay.fill((0, 0, 0, 195))
+                screen.blit(overlay, (0, 0))
+
+                about_w, about_h = 580, 510
+                about_rect = pygame.Rect((SCREEN_WIDTH - about_w) // 2, (SCREEN_HEIGHT - about_h) // 2, about_w, about_h)
+                draw_card(screen, about_rect, border_color=Theme.BORDER_LIGHT, bg_color=Theme.PANEL, radius=12)
+
+                # Botão Fechar [✕]
+                btn_about_close = pygame.Rect(about_rect.right - 36, about_rect.y + 14, 24, 24)
+                h_ab_close = btn_about_close.collidepoint(mouse_pos)
+                if h_ab_close:
+                    pygame.draw.rect(screen, Theme.BTN_HOVER, btn_about_close, border_radius=4)
+                    hover_clickable = True
+                draw_icon_close(screen, btn_about_close.center, 10, Theme.TEXT_PRIMARY if h_ab_close else Theme.TEXT_SECONDARY)
+
+                # Header do Sobre (Logo + Título)
+                logo_path = resource_path(os.path.join("static", "PyTuber.png"))
+                if not os.path.exists(logo_path):
+                    logo_path = resource_path("PyTuber.png")
+                
+                logo_size = 64
+                if os.path.exists(logo_path):
+                    try:
+                        raw_logo = pygame.image.load(logo_path).convert_alpha()
+                        scaled_logo = pygame.transform.smoothscale(raw_logo, (logo_size, logo_size))
+                        screen.blit(scaled_logo, (about_rect.x + 24, about_rect.y + 20))
+                    except Exception:
+                        pass
+
+                title_x = about_rect.x + 24 + logo_size + 16
+                screen.blit(get_font(18, bold=True).render("Pytuber Studio", True, Theme.TEXT_PRIMARY), (title_x, about_rect.y + 22))
+                
+                # Badge de versão ao lado do título
+                draw_badge(screen, title_x + 142, about_rect.y + 22, f"v{APP_VERSION}", (255, 255, 255), Theme.ACCENT, radius=4)
+                screen.blit(get_font(12).render("Engine Open-Source para Avatares PNGTuber / VTuber", True, Theme.TEXT_SECONDARY), (title_x, about_rect.y + 48))
+
+                # Linha divisória
+                pygame.draw.line(screen, Theme.BORDER, (about_rect.x + 24, about_rect.y + 98), (about_rect.right - 24, about_rect.y + 98), 1)
+
+                # Container com os dados do sistema
+                info_card_rect = pygame.Rect(about_rect.x + 24, about_rect.y + 110, about_rect.width - 48, 330)
+                draw_card(screen, info_card_rect, border_color=Theme.BORDER, bg_color=Theme.CARD_INNER, radius=8)
+
+                # Detalhes do Ambiente
+                py_ver = f"{platform.python_version()} ({platform.architecture()[0]})"
+                os_ver = f"{platform.system()} {platform.release()} (Build {platform.version().split('.')[-1]})"
+                
+                # Bibliotecas
+                pygame_ver = getattr(pygame, '__version__', '2.5.8')
+                numpy_ver = getattr(np, '__version__', '2.5.5')
+                sd_ver = getattr(sd, '__version__', '0.5.6')
+                if HAS_VIRTUALCAM:
+                    vcam_ver = getattr(pyvirtualcam, '__version__', '0.15.0')
+                else:
+                    vcam_ver = "Não instalada"
+
+                details = [
+                    ("Data da Release:", RELEASE_DATE or "25/11/2026"),
+                    ("Versão do Python:", py_ver),
+                    ("Sistema Operacional:", os_ver),
+                    ("Motor Gráfico:", f"pygame-ce {pygame_ver}"),
+                    ("Processamento:", f"numpy {numpy_ver}"),
+                    ("Captura de Áudio:", f"sounddevice {sd_ver}"),
+                    ("Câmera Virtual:", f"pyvirtualcam {vcam_ver}"),
+                    ("Repositório Oficial:", f"github.com/{GITHUB_OWNER}/{GITHUB_REPO}")
+                ]
+
+                row_y = info_card_rect.y + 12
+                for label, val in details:
+                    lbl_surf = get_font(12, bold=True).render(label, True, Theme.TEXT_SECONDARY)
+                    val_surf = get_font(12).render(val, True, Theme.TEXT_PRIMARY)
+                    screen.blit(lbl_surf, (info_card_rect.x + 16, row_y))
+                    screen.blit(val_surf, (info_card_rect.x + 180, row_y))
+                    row_y += 37
+
+                # Botões de Ação do Modal Sobre
+                btn_ab_check = pygame.Rect(about_rect.x + 24, about_rect.bottom - 52, 180, 36)
+                btn_ab_dismiss = pygame.Rect(about_rect.right - 130, about_rect.bottom - 52, 106, 36)
+
+                h_ab_chk = btn_ab_check.collidepoint(mouse_pos)
+                h_ab_dsm = btn_ab_dismiss.collidepoint(mouse_pos)
+
+                col_ab_chk = (255, 255, 255) if h_ab_chk else Theme.TEXT_PRIMARY
+                draw_card(screen, btn_ab_check, border_color=Theme.BORDER_LIGHT if h_ab_chk else Theme.BORDER, bg_color=Theme.BTN_HOVER if h_ab_chk else Theme.BTN_NEUTRAL, radius=6)
+                draw_icon_refresh(screen, (btn_ab_check.x + 18, btn_ab_check.centery), 6, col_ab_chk)
+                t_chk_btn = get_font(12).render("Buscar Atualizações", True, col_ab_chk)
+                screen.blit(t_chk_btn, (btn_ab_check.x + 30, btn_ab_check.centery - t_chk_btn.get_height() // 2))
+
+                draw_card(screen, btn_ab_dismiss, border_color=Theme.BORDER_LIGHT if h_ab_dsm else Theme.BORDER, bg_color=Theme.BTN_HOVER if h_ab_dsm else Theme.BTN_NEUTRAL, radius=6)
+                t_dsm_btn = get_font(12).render("Fechar", True, Theme.TEXT_PRIMARY)
+                screen.blit(t_dsm_btn, t_dsm_btn.get_rect(center=btn_ab_dismiss.center))
+
+                if h_ab_chk or h_ab_dsm:
+                    hover_clickable = True
 
         elif current_state == "POSITIONING":
             # Modo de Posições Moderno
